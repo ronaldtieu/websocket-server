@@ -1,0 +1,13 @@
+{
+  "name": "archduke",
+  "version": "0.0.1",
+  "type": "module",
+  "main": "src/ArchdukeGame.ts",
+  "exports": {
+    ".": "./src/ArchdukeGame.ts"
+  },
+  "dependencies": {},
+  "devDependencies": {
+    "typescript": "^5.7.2"
+  }
+}

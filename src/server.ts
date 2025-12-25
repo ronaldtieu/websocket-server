@@ -9,7 +9,7 @@ import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
 import { setupSocketHandlers } from './socket/handler.js';
 import { gameManager } from './games/GameManager.js';
-import { StubGame } from './games/StubGame.js';
+import { ArchdukeGame } from './games/archduke/src/ArchdukeGame.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -46,12 +46,12 @@ const io = new SocketIOServer(httpServer, {
   },
 });
 
-// sets up the stub game for testing
+// sets up the archduke game
 gameManager.setGameFactory((gameId: string) => {
-  return new StubGame(gameId);
+  return new ArchdukeGame(gameId);
 });
 
-console.log('stub game connected. ready for testing');
+console.log('archduke game connected. ready for testing');
 
 // sets up all socket event listeners
 setupSocketHandlers(io);
