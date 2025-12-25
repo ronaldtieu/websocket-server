@@ -1,6 +1,6 @@
 # Archduke Cards
 
-## Card Types
+## Card Types:
 
 ### Number Cards
 - point values ranging from -3 to 13
