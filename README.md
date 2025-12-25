@@ -1,6 +1,11 @@
 # Websocket Server
 
-a real-time multiplayer websocket server designed for card and board games. this server handles all the networking layer — player connections, game rooms, and event broadcasting — while keeping your game logic completely separate.
+a real-time multiplayer websocket server designed for card and board games. this server handles all the networking layer 
+
+- game rooms
+- player connections
+- event broadcasting
+while keeping your game logic completely separate.
 
 ## How It Works
 
