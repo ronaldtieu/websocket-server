@@ -1,7 +1,7 @@
 // main game logic class for archduke
 // file contains logic relating to: manages players, deck, turns, and win conditions
 
-import type { GameInterface, PlayerAction, GameState } from '../../src/games/GameInterface.js';
+import type { GameInterface, PlayerAction, GameState } from '../../GameInterface.js';
 
 export class ArchdukeGame implements GameInterface {
   readonly gameId: string;

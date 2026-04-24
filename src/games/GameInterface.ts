@@ -27,8 +27,12 @@ export interface GameInterface {
   // unique id for this game instance
   readonly gameId: string;
 
-  // returns the current state of the game
+  // returns the current state of the game (public view — safe to broadcast)
   getState(): GameState;
+
+  // returns per-player filtered state (hidden hands, private roles, etc.).
+  // optional — games without hidden info can omit and the server falls back to getState().
+  getStateForPlayer?(playerId: string): GameState;
 
   // add a new player to the game
   addPlayer(playerId: string, playerName: string): boolean;

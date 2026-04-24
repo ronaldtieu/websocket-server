@@ -1,64 +1,59 @@
 // main entry point for the websocket server
-// sets up the http server and socket.io
-// starts listening for connections
+// sets up express + vite middleware + socket.io
+// serves the react client in dev via vite middleware, in prod from dist/
 
+import express from 'express';
 import { createServer } from 'http';
 import { Server as SocketIOServer } from 'socket.io';
-import { readFileSync } from 'fs';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
 import { setupSocketHandlers } from './socket/handler.js';
 import { gameManager } from './games/GameManager.js';
-import { ArchdukeGame } from './games/archduke/src/ArchdukeGame.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
-// port to run the server on
-const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
-
-// controls which websites can connect
+// port 3000 is reserved for other local projects — never default to it.
+const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3131;
 const CORS_ORIGIN = process.env.CORS_ORIGIN || '*';
 
-// creates an http server
-const httpServer = createServer((req, res) => {
-  if (req.url === '/' || req.url === '/index.html') {
-    const filePath = join(__dirname, '../public/test-client.html');
-    try {
-      const content = readFileSync(filePath, 'utf-8');
-      res.writeHead(200, { 'Content-Type': 'text/html' });
-      res.end(content);
-    } catch {
-      res.writeHead(404);
-      res.end('test client not found');
-    }
+async function startServer(): Promise<void> {
+  const app = express();
+  const httpServer = createServer(app);
+
+  const io = new SocketIOServer(httpServer, {
+    cors: {
+      origin: CORS_ORIGIN,
+      methods: ['GET', 'POST'],
+    },
+  });
+
+  setupSocketHandlers(io);
+
+  // game factory will be wired up per-game as games are added.
+  // left intentionally unset for now — games plug in component by component.
+  void gameManager;
+
+  if (process.env.NODE_ENV !== 'production') {
+    // dev: use vite middleware so the react app is served with HMR.
+    const { createServer: createViteServer } = await import('vite');
+    const vite = await createViteServer({
+      server: { middlewareMode: true },
+      appType: 'spa',
+      root: join(__dirname, '..'),
+    });
+    app.use(vite.middlewares);
   } else {
-    res.writeHead(404);
-    res.end('not found');
+    // prod: serve the vite build output.
+    const distPath = join(__dirname, '../dist');
+    app.use(express.static(distPath));
+    app.get('*', (_req, res) => {
+      res.sendFile(join(distPath, 'index.html'));
+    });
   }
-});
 
-// creates the socket.io server
-const io = new SocketIOServer(httpServer, {
-  cors: {
-    origin: CORS_ORIGIN,
-    methods: ['GET', 'POST'],
-  },
-});
-
-// sets up the archduke game
-gameManager.setGameFactory((gameId: string) => {
-  return new ArchdukeGame(gameId);
-});
-
-console.log('archduke game connected. ready for testing');
-
-// sets up all socket event listeners
-setupSocketHandlers(io);
-
-// starts listening for connections on the configured port
-httpServer.listen(PORT, () => {
-  console.log(`
+  httpServer.listen(PORT, () => {
+    console.log(`
 ╔═══════════════════════════════════════════════════════╗
 ║           websocket server running                    ║
 ╠═══════════════════════════════════════════════════════╣
@@ -66,29 +61,24 @@ httpServer.listen(PORT, () => {
 ║  cors: ${CORS_ORIGIN.padEnd(43)}║
 ╚═══════════════════════════════════════════════════════╝
 
-waiting for connections...
+open http://localhost:${PORT} on the host
+phones join via the qr shown on the main screen
   `);
-});
-
-// handles shutdown signals (ctrl+c, deployment restarts, etc)
-// closes connections cleanly before exiting
-
-// sigterm is sent by deployment systems
-process.on('SIGTERM', () => {
-  console.log('sigterm received, shutting down gracefully...');
-  httpServer.close(() => {
-    console.log('server closed');
-    process.exit(0);
   });
-});
 
-// sigint is sent when pressing ctrl+c
-process.on('SIGINT', () => {
-  console.log('sigint received, shutting down gracefully...');
-  httpServer.close(() => {
-    console.log('server closed');
-    process.exit(0);
-  });
-});
+  const shutdown = (signal: string) => {
+    console.log(`${signal} received, shutting down gracefully...`);
+    httpServer.close(() => {
+      console.log('server closed');
+      process.exit(0);
+    });
+  };
 
-export { io, gameManager };
+  process.on('SIGTERM', () => shutdown('sigterm'));
+  process.on('SIGINT', () => shutdown('sigint'));
+}
+
+startServer().catch((err) => {
+  console.error('server failed to start:', err);
+  process.exit(1);
+});

@@ -68,11 +68,11 @@ npm run build
 npm start
 ```
 
-the server runs on `http://localhost:3000` by default.
+the server runs on `http://localhost:3131` by default. **port 3000 is never used for this project** — it's reserved for other local projects. override with `PORT=<n>` if needed.
 
 ### testing
 
-open `http://localhost:3000` in your browser to use the test client. you can:
+open `http://localhost:3131` in your browser to use the test client. you can:
 - connect to the server
 - join a game room (enter a game id and player name)
 - send test actions
@@ -81,7 +81,7 @@ open `http://localhost:3000` in your browser to use the test client. you can:
 
 to test from other devices on your network, use your computer's ip address:
 ```
-http://192.168.x.x:3000
+http://192.168.x.x:3131
 ```
 
 ## Integrating Your Game
@@ -149,7 +149,7 @@ you can configure the server using environment variables:
 
 | variable | default | purpose |
 |----------|---------|---------|
-| `port` | `3000` | port to run the server on |
+| `port` | `3131` | port to run the server on. **never use 3000** — reserved for other local projects |
 | `cors_origin` | `*` | which domains can connect (use your frontend domain in production) |
 
 example:

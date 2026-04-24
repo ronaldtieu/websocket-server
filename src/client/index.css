@@ -1,0 +1,30 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Helvetica Neue", Arial, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
+}
+
+@layer base {
+  body {
+    @apply bg-[#0A0A0A] text-white font-sans selection:bg-white selection:text-black;
+    overflow-x: hidden;
+  }
+
+  ::-webkit-scrollbar {
+    display: none;
+  }
+}
+
+.glow-button:hover {
+  box-shadow: 0 0 30px rgba(255, 255, 255, 0.15);
+  transform: translateY(-2px);
+}
+
+.player-card {
+  transition: all 0.3s ease;
+}
+
+.bg-stealth-gradient {
+  background: radial-gradient(circle at 50% 50%, #171717 0%, #0A0A0A 100%);
+}
