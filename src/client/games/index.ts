@@ -5,4 +5,10 @@
 import './remove-one/index';
 import './crooked-cops/index';
 import './time-auction/index';
+import './balance-mancala/index';
+import './halloween-monster/index';
+import './doubt-and-bet/index';
+import './cube-board/index';
+import './treasure-island/index';
+import './archduke/index';
 // games: add future registrations here, one per line.
