@@ -4,4 +4,6 @@
 // touches, and appends rarely conflict.
 
 import './remove-one/index.js';
+import './crooked-cops/index.js';
+import './time-auction/index.js';
 // games: add future registrations here, one per line.
