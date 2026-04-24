@@ -1,4 +1,5 @@
 import { motion, AnimatePresence } from 'motion/react';
+import { PixelPlayingCard } from './PixelPlayingCard';
 
 // simultaneous flip reveal for public cards. Server sends `playedCard` values;
 // clients render them with a staggered flip. used for both peek and play phases.
@@ -40,23 +41,21 @@ export function RevealOverlay({
               transition={{ delay: i * 0.06, duration: 0.4, type: 'spring', stiffness: 200 }}
               className="flex flex-col items-center gap-2"
             >
-              <div
-                className={
-                  'relative w-20 h-28 rounded-xl border flex items-center justify-center font-black text-5xl ' +
-                  (p.winner
-                    ? 'bg-white text-black border-white shadow-2xl shadow-white/30'
-                    : p.clashed
-                      ? 'bg-zinc-900 text-zinc-600 border-red-500/40 line-through'
-                      : 'bg-zinc-900 text-white border-white/10')
-                }
-              >
-                {p.card ?? '—'}
-                {p.winner && (
-                  <span className="absolute -top-2 -right-2 bg-white text-black px-2 py-0.5 rounded-full text-[8px] font-black tracking-widest">
-                    WIN
-                  </span>
-                )}
-              </div>
+              {p.card != null ? (
+                <div className="w-20 md:w-24 aspect-[3/4]">
+                  <PixelPlayingCard
+                    value={p.card}
+                    tone={p.winner ? 'winner' : p.clashed ? 'clashed' : 'default'}
+                    size="md"
+                    badge={p.winner ? 'WIN' : p.clashed ? 'CLASH' : undefined}
+                    className="h-full w-full"
+                  />
+                </div>
+              ) : (
+                <div className="w-20 md:w-24 aspect-[3/4] rounded-[4px] border-[3px] border-white/10 bg-zinc-950 flex items-center justify-center text-5xl text-zinc-700 shadow-[4px_4px_0_rgba(0,0,0,0.32)]">
+                  —
+                </div>
+              )}
               <div className="text-[9px] font-bold uppercase tracking-widest text-zinc-400 max-w-20 truncate">
                 {p.name}
               </div>

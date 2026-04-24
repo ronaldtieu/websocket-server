@@ -2,6 +2,7 @@ import { motion } from 'motion/react';
 import { Shield, Trophy } from 'lucide-react';
 import { PhaseTimer } from '../../primitives/PhaseTimer';
 import { RevealOverlay } from '../../primitives/RevealOverlay';
+import { PixelPlayingCard, PixelCardBack } from '../../primitives/PixelPlayingCard';
 import type { RemoveOnePublicState } from './types';
 import { socket } from '../../lib/socket';
 
@@ -64,7 +65,7 @@ export function RemoveOneMainScreen({
       {/* Reveals */}
       <div className="flex-1 flex items-center justify-center relative z-10">
         {showPeek && (
-          <div className="w-full max-w-4xl space-y-6">
+          <div className="w-full max-w-5xl space-y-6">
             <div className="text-center text-[10px] font-bold uppercase tracking-[0.4em] text-zinc-500">
               Everyone's two candidates
             </div>
@@ -79,20 +80,21 @@ export function RemoveOneMainScreen({
                   <div className="text-[9px] font-bold uppercase tracking-widest text-zinc-400 max-w-[100px] truncate">
                     {p.name}
                   </div>
-                  <div className="flex gap-2">
+                  <div className="flex gap-3">
                     {p.peekCards ? (
                       p.peekCards.map((c, i) => (
-                        <div
-                          key={i}
-                          className="w-12 h-16 rounded-lg bg-zinc-900 border border-white/10 flex items-center justify-center font-black text-2xl"
-                        >
-                          {c}
+                        <div key={i} className="w-14 md:w-16 aspect-[3/4]">
+                          <PixelPlayingCard value={c} size="sm" className="h-full w-full" />
                         </div>
                       ))
                     ) : (
                       <>
-                        <div className="w-12 h-16 rounded-lg bg-zinc-800 border border-white/5" />
-                        <div className="w-12 h-16 rounded-lg bg-zinc-800 border border-white/5" />
+                        <div className="w-14 md:w-16 aspect-[3/4]">
+                          <PixelCardBack size="sm" className="h-full w-full" />
+                        </div>
+                        <div className="w-14 md:w-16 aspect-[3/4]">
+                          <PixelCardBack size="sm" className="h-full w-full" />
+                        </div>
                       </>
                     )}
                   </div>

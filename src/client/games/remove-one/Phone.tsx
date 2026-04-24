@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { motion } from 'motion/react';
 import { Trophy, Check } from 'lucide-react';
 import { CardHand, type CardTile } from '../../primitives/CardHand';
+import { PixelPlayingCard } from '../../primitives/PixelPlayingCard';
 import { PhaseTimer } from '../../primitives/PhaseTimer';
 import { socket } from '../../lib/socket';
 import type { RemoveOneStateForPlayer } from './types';
@@ -148,16 +149,17 @@ export function RemoveOnePhone({ state }: { state: RemoveOneStateForPlayer }) {
                     whileTap={canPick ? { scale: 0.97 } : {}}
                     disabled={!canPick}
                     onClick={() => canPick && handleChoose(card)}
-                    className={`aspect-[3/4] rounded-2xl border flex items-center justify-center font-black text-7xl transition-all ${
-                      isChosen
-                        ? 'bg-white text-black border-white shadow-2xl shadow-white/30'
-                        : canPick
-                          ? 'bg-zinc-900 text-white border-white/10 hover:border-white/30'
-                          : 'bg-zinc-900 text-white border-white/5'
+                    className={`relative aspect-[3/4] transition-all ${
+                      canPick ? 'cursor-pointer' : 'cursor-default'
                     }`}
                   >
-                    {card}
-                    <span className="absolute top-2 left-2 text-[9px] font-bold uppercase tracking-widest text-zinc-500">
+                    <PixelPlayingCard
+                      value={card}
+                      tone={isChosen ? 'selected' : 'default'}
+                      size="lg"
+                      className="h-full w-full"
+                    />
+                    <span className="absolute top-2 right-2 rounded-sm bg-black/60 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-widest text-zinc-300">
                       {i === 0 ? 'A' : 'B'}
                     </span>
                   </motion.button>

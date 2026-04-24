@@ -1,5 +1,6 @@
 import { motion } from 'motion/react';
 import { cn } from '../lib/utils';
+import { PixelPlayingCard, type PixelCardTone } from './PixelPlayingCard';
 
 export type CardState = 'available' | 'locked' | 'discarded' | 'selected';
 
@@ -31,6 +32,13 @@ export function CardHand({
         const locked = card.state === 'locked';
         const discarded = card.state === 'discarded';
         const atLimit = !isSelected && selected.length >= selectLimit;
+        const tone: PixelCardTone = isSelected
+          ? 'selected'
+          : locked
+            ? 'locked'
+            : discarded
+              ? 'discarded'
+              : 'default';
 
         return (
           <motion.button
@@ -41,28 +49,18 @@ export function CardHand({
             disabled={!tappable || (atLimit && !isSelected)}
             onClick={() => tappable && onToggle(card.value)}
             className={cn(
-              'relative aspect-[3/4] rounded-xl border flex items-center justify-center font-black text-4xl transition-all',
-              'border-white/10 bg-zinc-900',
-              tappable && !atLimit && 'hover:border-white/30 cursor-pointer',
-              isSelected && 'border-white bg-white text-black shadow-2xl shadow-white/20',
-              locked && 'opacity-30 grayscale',
-              discarded && 'opacity-10',
-              atLimit && !isSelected && 'opacity-40 cursor-not-allowed',
+              'relative aspect-[3/4] transition-all',
+              tappable && !atLimit ? 'cursor-pointer' : 'cursor-not-allowed',
+              atLimit && !isSelected && 'opacity-40',
             )}
           >
-            <span className={cn('tracking-tighter', isSelected ? 'text-black' : 'text-white')}>
-              {card.value}
-            </span>
-            {locked && (
-              <span className="absolute bottom-1 left-0 right-0 text-center text-[7px] font-bold uppercase tracking-widest text-zinc-500">
-                locked
-              </span>
-            )}
-            {discarded && (
-              <span className="absolute bottom-1 left-0 right-0 text-center text-[7px] font-bold uppercase tracking-widest text-zinc-700">
-                used
-              </span>
-            )}
+            <PixelPlayingCard
+              value={card.value}
+              tone={tone}
+              size="md"
+              footerLabel={locked ? 'locked' : discarded ? 'used' : undefined}
+              className="h-full w-full"
+            />
           </motion.button>
         );
       })}
