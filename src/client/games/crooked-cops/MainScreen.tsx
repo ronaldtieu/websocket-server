@@ -1,26 +1,43 @@
 import { motion, AnimatePresence } from 'motion/react';
-import { Shield, Trophy } from 'lucide-react';
-import { PhaseTimer } from '../../primitives/PhaseTimer';
+import { Shield, Trophy, Radar, Footprints, Siren } from 'lucide-react';
 import { socket } from '../../lib/socket';
+import {
+  PixelBadge,
+  PixelButton,
+  PixelPanel,
+  PIXEL_GRID_STYLE,
+  type PixelTone,
+} from '../../primitives/PixelHUD';
+import { PhaseTimer } from '../../primitives/PhaseTimer';
 import type { CrookedCopsPublicState, NodeId, TeamColor, WinnerKind } from './types';
 
 const PHASE_LABELS: Record<string, string> = {
-  'thief-phase': 'Thieves on the move',
+  'thief-phase': 'Thieves moving',
   'police-phase': 'Police acting',
   'arrest-resolution': 'Arrest resolution',
   checkpoint: 'Checkpoint reveal',
   'whistleblower-vote': 'Whistleblower vote',
-  finished: 'Game over',
+  finished: 'Case closed',
 };
 
 const TEAM_COLORS: Record<TeamColor, string> = {
   red: '#ef4444',
-  blue: '#3b82f6',
-  green: '#22c55e',
+  blue: '#60a5fa',
+  green: '#34d399',
 };
 
 const VIEW_W = 800;
 const VIEW_H = 600;
+
+function phaseTone(phase: string): PixelTone {
+  if (phase === 'thief-phase') return 'amber';
+  if (phase === 'police-phase') return 'cyan';
+  if (phase === 'arrest-resolution') return 'rose';
+  if (phase === 'checkpoint') return 'emerald';
+  if (phase === 'whistleblower-vote') return 'amber';
+  if (phase === 'finished') return 'slate';
+  return 'slate';
+}
 
 export function CrookedCopsMainScreen({
   state,
@@ -31,207 +48,322 @@ export function CrookedCopsMainScreen({
   isHost: boolean;
   onReturnToLobby: () => void;
 }) {
-  const layout = state.graph.layout;
+  const currentPhaseTone = phaseTone(state.phase);
+  const thiefCount = state.players.filter((player) => player.publicRole === 'thief').length;
+  const copCount = state.players.filter((player) => player.publicRole === 'cop').length;
 
   return (
-    <div className="min-h-screen bg-black text-white px-12 pt-12 pb-28 flex flex-col gap-6 relative overflow-hidden">
-      <div
-        className="absolute inset-0 opacity-[0.03] pointer-events-none"
-        style={{
-          backgroundImage: 'radial-gradient(circle at 2px 2px, white 1px, transparent 0)',
-          backgroundSize: '40px 40px',
-        }}
-      />
+    <div className="min-h-screen bg-[#040707] text-white px-4 md:px-10 pt-8 pb-28 flex flex-col gap-4 relative overflow-hidden font-mono">
+      <div className="absolute inset-0 opacity-30 pointer-events-none" style={PIXEL_GRID_STYLE} />
+      <div className="absolute inset-0 pointer-events-none bg-[radial-gradient(circle_at_top,rgba(52,211,153,0.08),transparent_30%),radial-gradient(circle_at_bottom,rgba(96,165,250,0.08),transparent_36%)]" />
 
-      {/* Header */}
-      <div className="flex items-center justify-between relative z-10">
-        <div className="flex items-center gap-6">
-          <div className="w-16 h-16 bg-white rounded-2xl flex items-center justify-center shadow-2xl">
-            <Shield size={32} className="text-black" strokeWidth={2.5} />
+      <div className="relative z-10 grid gap-4 xl:grid-cols-[1.25fr_0.75fr]">
+        <PixelPanel
+          tone="emerald"
+          title="Metro Control"
+          subtitle={`Round ${state.round} / ${state.totalRounds}`}
+          meta={<PixelBadge tone={currentPhaseTone}>{PHASE_LABELS[state.phase] ?? state.phase}</PixelBadge>}
+        >
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+            <div className="flex items-center gap-4">
+              <div className="flex h-16 w-16 items-center justify-center border-[3px] border-emerald-100 bg-[#7af0bd] text-[#042015] shadow-[6px_6px_0_rgba(0,0,0,0.35)]">
+                <Shield size={32} strokeWidth={2.6} />
+              </div>
+              <div>
+                <h1 className="text-4xl md:text-5xl font-black uppercase tracking-[-0.12em] leading-none">
+                  Crooked Cops
+                </h1>
+                <div className="mt-2 text-[11px] uppercase tracking-[0.24em] text-emerald-200">
+                  Tactical subway pursuit with hidden traitors.
+                </div>
+              </div>
+            </div>
+            <div className="min-w-full lg:min-w-[260px]">
+              <PhaseTimer deadline={state.phaseDeadline} label="phase timer" />
+            </div>
           </div>
-          <div>
-            <h1 className="text-4xl font-black tracking-tighter uppercase leading-none">
-              Crooked Cops
-            </h1>
-            <p className="text-zinc-600 text-[9px] font-bold uppercase tracking-[0.4em] mt-2">
-              Round {state.round} / {state.totalRounds}
-              {state.publicPieceCount != null &&
-                ` · Pieces ${state.publicPieceCount} / 12`}
-            </p>
+        </PixelPanel>
+
+        <PixelPanel tone="slate" title="Live Count" subtitle="Public roster">
+          <div className="grid grid-cols-3 gap-3">
+            <div className="border-[3px] border-white/8 bg-black/25 px-3 py-3 shadow-[4px_4px_0_rgba(0,0,0,0.35)]">
+              <div className="text-[9px] uppercase tracking-[0.24em] text-zinc-400">Pieces</div>
+              <div className="mt-2 text-4xl font-black tracking-[-0.14em] text-white">
+                {state.publicPieceCount ?? '?'}
+              </div>
+            </div>
+            <div className="border-[3px] border-white/8 bg-black/25 px-3 py-3 shadow-[4px_4px_0_rgba(0,0,0,0.35)]">
+              <div className="text-[9px] uppercase tracking-[0.24em] text-zinc-400">Thieves</div>
+              <div className="mt-2 text-4xl font-black tracking-[-0.14em] text-white">{thiefCount}</div>
+            </div>
+            <div className="border-[3px] border-white/8 bg-black/25 px-3 py-3 shadow-[4px_4px_0_rgba(0,0,0,0.35)]">
+              <div className="text-[9px] uppercase tracking-[0.24em] text-zinc-400">Cops</div>
+              <div className="mt-2 text-4xl font-black tracking-[-0.14em] text-white">{copCount}</div>
+            </div>
           </div>
-        </div>
-        <div className="flex flex-col gap-2 min-w-[220px]">
-          <div className="text-[10px] font-bold uppercase tracking-[0.3em] text-zinc-500">
-            {PHASE_LABELS[state.phase] ?? state.phase}
-          </div>
-          <PhaseTimer deadline={state.phaseDeadline} />
-        </div>
+        </PixelPanel>
       </div>
 
-      {/* Arrest banner */}
       <AnimatePresence>
         {state.lastArrest && (
           <motion.div
-            initial={{ opacity: 0, y: -10 }}
+            initial={{ opacity: 0, y: -8 }}
             animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -10 }}
-            className={`relative z-10 rounded-xl border px-6 py-4 ${
-              state.lastArrest.success
-                ? 'border-green-500/40 bg-green-500/5 text-green-200'
-                : state.lastArrest.nullifiedByCrookedCop
-                  ? 'border-amber-500/40 bg-amber-500/5 text-amber-200'
-                  : 'border-zinc-500/30 bg-zinc-500/5 text-zinc-300'
-            }`}
+            exit={{ opacity: 0, y: -8 }}
+            className="relative z-10"
           >
-            <div className="text-[10px] font-bold uppercase tracking-[0.3em] opacity-70">
-              Arrest attempt
-            </div>
-            <div className="text-base mt-1">
-              <span className="font-bold">{state.lastArrest.byName}</span> attempted arrest at{' '}
-              <span className="font-mono">{state.lastArrest.targetNode}</span> —{' '}
-              {state.lastArrest.success
-                ? 'thief caught!'
-                : state.lastArrest.nullifiedByCrookedCop
-                  ? 'somehow it failed...'
-                  : 'no thief here'}
-            </div>
+            <PixelPanel
+              tone={
+                state.lastArrest.success
+                  ? 'emerald'
+                  : state.lastArrest.nullifiedByCrookedCop
+                    ? 'amber'
+                    : 'rose'
+              }
+              title="Arrest Attempt"
+              subtitle={state.lastArrest.byName}
+              meta={
+                <PixelBadge
+                  tone={
+                    state.lastArrest.success
+                      ? 'emerald'
+                      : state.lastArrest.nullifiedByCrookedCop
+                        ? 'amber'
+                        : 'rose'
+                  }
+                >
+                  {state.lastArrest.targetNode}
+                </PixelBadge>
+              }
+            >
+              <div className="text-sm uppercase tracking-[0.18em]">
+                {state.lastArrest.success
+                  ? 'Thief caught.'
+                  : state.lastArrest.nullifiedByCrookedCop
+                    ? 'Arrest was nullified.'
+                    : 'No thief at the target.'}
+              </div>
+            </PixelPanel>
           </motion.div>
         )}
       </AnimatePresence>
 
-      {/* Subway graph */}
-      <div className="flex-1 flex items-center justify-center relative z-10">
-        {state.phase === 'finished' && state.outcome ? (
-          <FinishedView state={state} />
-        ) : (
-          <svg
-            viewBox={`0 0 ${VIEW_W} ${VIEW_H}`}
-            className="w-full h-full max-h-[600px]"
-            preserveAspectRatio="xMidYMid meet"
-          >
-            {/* Edges */}
-            {state.graph.edges.map(([a, b]) => {
-              const pa = layout[a];
-              const pb = layout[b];
-              if (!pa || !pb) return null;
-              return (
-                <line
-                  key={`${a}-${b}`}
-                  x1={pa.x * VIEW_W}
-                  y1={pa.y * VIEW_H}
-                  x2={pb.x * VIEW_W}
-                  y2={pb.y * VIEW_H}
-                  stroke="rgba(255,255,255,0.12)"
-                  strokeWidth={1.5}
-                />
-              );
-            })}
-            {/* Nodes */}
-            {state.graph.nodes.map((id) => {
-              const pos = layout[id];
-              if (!pos) return null;
-              return (
-                <g key={id} transform={`translate(${pos.x * VIEW_W}, ${pos.y * VIEW_H})`}>
-                  <circle r={6} fill="rgba(255,255,255,0.15)" stroke="rgba(255,255,255,0.3)" />
-                  <text
-                    x={9}
-                    y={4}
-                    fontSize={9}
-                    fill="rgba(255,255,255,0.4)"
-                    fontFamily="monospace"
-                  >
-                    {id}
-                  </text>
-                </g>
-              );
-            })}
-            {/* Thief markers (hidden until reveal — main screen never sees them
-                unless server sends them as null we skip). */}
-            {state.players
-              .filter((p) => p.publicRole === 'thief' && p.node)
-              .map((p) => {
-                const pos = layout[p.node as NodeId];
-                if (!pos) return null;
-                return (
-                  <g key={`thief-${p.id}`} transform={`translate(${pos.x * VIEW_W}, ${pos.y * VIEW_H})`}>
-                    <circle r={11} fill="white" stroke="black" strokeWidth={2} />
-                    <text x={0} y={4} fontSize={10} fill="black" fontWeight="bold" textAnchor="middle">
-                      T
-                    </text>
-                  </g>
-                );
-              })}
-            {/* Cop markers (always public) */}
-            {state.players
-              .filter((p) => p.publicRole === 'cop' && p.node)
-              .map((p, idx) => {
-                const pos = layout[p.node as NodeId];
-                if (!pos) return null;
-                const teamColor = p.team ? TEAM_COLORS[p.team] : '#888';
-                return (
-                  <g
-                    key={`cop-${p.id}`}
-                    transform={`translate(${pos.x * VIEW_W + ((idx % 3) - 1) * 6}, ${pos.y * VIEW_H + 12})`}
-                  >
-                    <circle r={6} fill={teamColor} stroke="black" strokeWidth={1} />
-                  </g>
-                );
-              })}
-          </svg>
-        )}
-      </div>
+      <div className="relative z-10 grid flex-1 gap-4 xl:grid-cols-[1.35fr_0.65fr]">
+        <PixelPanel
+          tone={currentPhaseTone}
+          title="Subway Grid"
+          subtitle="Live tactical map"
+          className="min-h-[420px]"
+        >
+          <div className="flex h-full items-center justify-center">
+            {state.phase === 'finished' && state.outcome ? (
+              <FinishedView state={state} />
+            ) : (
+              <svg
+                viewBox={`0 0 ${VIEW_W} ${VIEW_H}`}
+                className="w-full h-full max-h-[620px]"
+                preserveAspectRatio="xMidYMid meet"
+              >
+                <defs>
+                  <pattern id="metro-grid" width="16" height="16" patternUnits="userSpaceOnUse">
+                    <path d="M 16 0 L 0 0 0 16" fill="none" stroke="rgba(255,255,255,0.06)" strokeWidth="1" />
+                  </pattern>
+                </defs>
+                <rect width={VIEW_W} height={VIEW_H} fill="#08110f" />
+                <rect width={VIEW_W} height={VIEW_H} fill="url(#metro-grid)" />
 
-      {/* Roster strip */}
-      <div className="relative z-10 border-t border-white/5 pt-4">
-        <div className="text-[10px] font-bold uppercase tracking-[0.4em] text-zinc-500 mb-3">
-          Roster
-        </div>
-        <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-2">
-          {state.players.map((p) => (
-            <div
-              key={p.id}
-              className="rounded-lg border border-white/5 bg-zinc-900/40 px-3 py-2"
-            >
-              <div className="flex items-center gap-2">
-                <span
-                  className="w-2 h-2 rounded-full"
-                  style={{
-                    background:
-                      p.publicRole === 'thief'
-                        ? '#ffffff'
-                        : p.team
-                          ? TEAM_COLORS[p.team]
-                          : '#666',
-                  }}
-                />
-                <span className="text-[10px] font-bold uppercase tracking-widest truncate">
-                  {p.name}
-                </span>
+                {state.graph.edges.map(([a, b]) => {
+                  const pa = state.graph.layout[a];
+                  const pb = state.graph.layout[b];
+                  if (!pa || !pb) return null;
+
+                  return (
+                    <g key={`${a}-${b}`}>
+                      <line
+                        x1={pa.x * VIEW_W}
+                        y1={pa.y * VIEW_H}
+                        x2={pb.x * VIEW_W}
+                        y2={pb.y * VIEW_H}
+                        stroke="#04110f"
+                        strokeWidth={10}
+                      />
+                      <line
+                        x1={pa.x * VIEW_W}
+                        y1={pa.y * VIEW_H}
+                        x2={pb.x * VIEW_W}
+                        y2={pb.y * VIEW_H}
+                        stroke="rgba(255,255,255,0.16)"
+                        strokeWidth={4}
+                      />
+                    </g>
+                  );
+                })}
+
+                {state.graph.pieceNodes.map((id) => {
+                  const pos = state.graph.layout[id];
+                  if (!pos) return null;
+
+                  return (
+                    <rect
+                      key={`piece-${id}`}
+                      x={pos.x * VIEW_W - 5}
+                      y={pos.y * VIEW_H - 5}
+                      width={10}
+                      height={10}
+                      fill="#ffd36e"
+                      stroke="#402300"
+                      strokeWidth={2}
+                    />
+                  );
+                })}
+
+                {state.graph.nodes.map((id) => {
+                  const pos = state.graph.layout[id];
+                  if (!pos) return null;
+
+                  return (
+                    <g key={id} transform={`translate(${pos.x * VIEW_W}, ${pos.y * VIEW_H})`}>
+                      <rect x={-7} y={-7} width={14} height={14} fill="#d8f6ea" stroke="#04110f" strokeWidth={3} />
+                      <rect x={-4} y={-4} width={8} height={8} fill="#0b1b17" />
+                      <text
+                        x={12}
+                        y={4}
+                        fontSize={10}
+                        fill="rgba(216,246,234,0.75)"
+                        fontFamily="monospace"
+                        fontWeight="bold"
+                      >
+                        {id}
+                      </text>
+                    </g>
+                  );
+                })}
+
+                {state.players
+                  .filter((player) => player.publicRole === 'thief' && player.node)
+                  .map((player) => {
+                    const pos = state.graph.layout[player.node as NodeId];
+                    if (!pos) return null;
+
+                    return (
+                      <g key={`thief-${player.id}`} transform={`translate(${pos.x * VIEW_W}, ${pos.y * VIEW_H - 18})`}>
+                        <rect x={-10} y={-10} width={20} height={20} fill="#ffffff" stroke="#111111" strokeWidth={3} />
+                        <text x={0} y={4} fontSize={10} fill="#111111" fontWeight="bold" textAnchor="middle">
+                          T
+                        </text>
+                      </g>
+                    );
+                  })}
+
+                {state.players
+                  .filter((player) => player.publicRole === 'cop' && player.node)
+                  .map((player, index) => {
+                    const pos = state.graph.layout[player.node as NodeId];
+                    if (!pos) return null;
+                    const teamColor = player.team ? TEAM_COLORS[player.team] : '#888';
+
+                    return (
+                      <rect
+                        key={`cop-${player.id}`}
+                        x={pos.x * VIEW_W - 5 + ((index % 3) - 1) * 8}
+                        y={pos.y * VIEW_H + 12}
+                        width={10}
+                        height={10}
+                        fill={teamColor}
+                        stroke="#04110f"
+                        strokeWidth={2}
+                      />
+                    );
+                  })}
+              </svg>
+            )}
+          </div>
+        </PixelPanel>
+
+        <div className="flex flex-col gap-4">
+          <PixelPanel tone="amber" title="Case Notes" subtitle="Current operation">
+            <div className="space-y-3">
+              <div className="flex items-start gap-3 border-[3px] border-white/8 bg-black/25 px-3 py-3 shadow-[4px_4px_0_rgba(0,0,0,0.25)]">
+                <Footprints size={16} className="mt-0.5 text-amber-200" />
+                <div>
+                  <div className="text-[9px] uppercase tracking-[0.24em] text-amber-200">Pieces</div>
+                  <div className="mt-1 text-sm uppercase tracking-[0.16em] text-white">
+                    Public trail count: {state.publicPieceCount ?? '?'} / 12
+                  </div>
+                </div>
               </div>
-              <div className="text-[9px] text-zinc-500 mt-1 uppercase tracking-widest">
-                {p.publicRole === 'thief' ? 'Thief' : `${p.team ?? 'cop'} cop`}
-                {p.arrestedThisRound ? ' · sitting out' : ''}
+              <div className="flex items-start gap-3 border-[3px] border-white/8 bg-black/25 px-3 py-3 shadow-[4px_4px_0_rgba(0,0,0,0.25)]">
+                <Radar size={16} className="mt-0.5 text-cyan-200" />
+                <div>
+                  <div className="text-[9px] uppercase tracking-[0.24em] text-cyan-200">Phase</div>
+                  <div className="mt-1 text-sm uppercase tracking-[0.16em] text-white">
+                    {PHASE_LABELS[state.phase] ?? state.phase}
+                  </div>
+                </div>
+              </div>
+              <div className="flex items-start gap-3 border-[3px] border-white/8 bg-black/25 px-3 py-3 shadow-[4px_4px_0_rgba(0,0,0,0.25)]">
+                <Siren size={16} className="mt-0.5 text-rose-200" />
+                <div>
+                  <div className="text-[9px] uppercase tracking-[0.24em] text-rose-200">Latest arrest</div>
+                  <div className="mt-1 text-sm uppercase tracking-[0.16em] text-white">
+                    {state.lastArrest
+                      ? `${state.lastArrest.byName} at ${state.lastArrest.targetNode}`
+                      : 'No arrest this round'}
+                  </div>
+                </div>
               </div>
             </div>
-          ))}
+          </PixelPanel>
+
+          <PixelPanel tone="slate" title="Field Units" subtitle="Public assignments">
+            <div className="space-y-2 max-h-[420px] overflow-y-auto pr-1">
+              {state.players.map((player) => (
+                <div
+                  key={player.id}
+                  className="flex items-center justify-between gap-3 border-[3px] border-white/8 bg-black/25 px-3 py-2 shadow-[4px_4px_0_rgba(0,0,0,0.25)]"
+                >
+                  <div className="flex items-center gap-3 min-w-0">
+                    <span
+                      className="h-3 w-3 shrink-0 border border-black/40"
+                      style={{
+                        background:
+                          player.publicRole === 'thief'
+                            ? '#ffffff'
+                            : player.team
+                              ? TEAM_COLORS[player.team]
+                              : '#888',
+                      }}
+                    />
+                    <div className="min-w-0">
+                      <div className="text-[10px] font-black uppercase tracking-[0.18em] truncate text-white">
+                        {player.name}
+                      </div>
+                      <div className="text-[9px] uppercase tracking-[0.18em] text-zinc-500">
+                        {player.publicRole === 'thief' ? 'Thief' : `${player.team ?? 'cop'} cop`}
+                        {player.arrestedThisRound ? ' / sitting out' : ''}
+                      </div>
+                    </div>
+                  </div>
+                  {player.team && <PixelBadge tone="slate">{player.team}</PixelBadge>}
+                </div>
+              ))}
+            </div>
+          </PixelPanel>
         </div>
       </div>
 
-      {/* Host controls */}
       {isHost && (
         <>
-          <button
-            onClick={() => socket.emit('host-skip-phase')}
-            className="absolute bottom-6 left-6 z-20 px-4 py-2 bg-white/5 border border-white/10 rounded-lg text-[9px] font-bold uppercase tracking-widest text-zinc-400 hover:bg-white/10 hover:text-white transition-all"
-          >
-            Skip Phase
-          </button>
-          <button
-            onClick={onReturnToLobby}
-            className="absolute bottom-6 right-6 z-20 px-4 py-2 bg-red-500/10 border border-red-500/40 rounded-lg text-[9px] font-bold uppercase tracking-widest text-red-300 hover:bg-red-500/20 hover:text-white transition-all"
-          >
-            End Game
-          </button>
+          <div className="absolute bottom-6 left-6 z-20">
+            <PixelButton tone="cyan" variant="ghost" onClick={() => socket.emit('host-skip-phase')}>
+              Skip Phase
+            </PixelButton>
+          </div>
+          <div className="absolute bottom-6 right-6 z-20">
+            <PixelButton tone="rose" variant="ghost" onClick={onReturnToLobby}>
+              End Game
+            </PixelButton>
+          </div>
         </>
       )}
     </div>
@@ -243,43 +375,39 @@ function FinishedView({ state }: { state: CrookedCopsPublicState }) {
   const winnerLabel: Record<WinnerKind, string> = {
     thieves: 'THIEVES WIN',
     police: 'POLICE WIN',
-    'timeout-thieves': 'TIMEOUT — Thieves',
-    'timeout-police': 'TIMEOUT — Police',
+    'timeout-thieves': 'TIMEOUT - THIEVES',
+    'timeout-police': 'TIMEOUT - POLICE',
   };
+
   return (
-    <div className="w-full max-w-3xl space-y-8 text-center">
-      <Trophy size={56} className="mx-auto text-white" />
-      <h2 className="text-5xl font-black tracking-tighter">{winnerLabel[outcome.winner]}</h2>
-      <div className="text-zinc-400 text-sm">
-        Pieces collected: {outcome.piecesCollected} / 12
+    <div className="w-full max-w-4xl space-y-6 text-center">
+      <Trophy size={60} className="mx-auto text-white" />
+      <div className="text-5xl md:text-6xl font-black tracking-[-0.12em] text-white">
+        {winnerLabel[outcome.winner]}
+      </div>
+      <div className="inline-flex justify-center">
+        <PixelBadge tone="amber">Pieces {outcome.piecesCollected} / 12</PixelBadge>
       </div>
 
       {outcome.voteResults.length > 0 && (
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-6">
-          {outcome.voteResults.map((r) => (
-            <div
-              key={r.team}
-              className="rounded-xl border border-white/10 bg-zinc-900/40 p-4 text-left"
-            >
-              <div
-                className="text-[10px] font-bold uppercase tracking-widest mb-2"
-                style={{ color: TEAM_COLORS[r.team] }}
-              >
-                {r.team} team verdict
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+          {outcome.voteResults.map((result) => (
+            <PixelPanel key={result.team} tone="slate" title={`${result.team} team`} subtitle="Vote result">
+              <div className="space-y-2 text-left">
+                <div className="text-base font-black uppercase tracking-[0.12em] text-white">
+                  {result.suspectName ?? 'No decision'}
+                </div>
+                <div className="text-[10px] uppercase tracking-[0.2em] text-zinc-400">
+                  {result.caughtCrookedCop ? 'Crooked cop caught' : 'No crooked cop found'}
+                </div>
+                <div className="text-[10px] uppercase tracking-[0.18em] text-zinc-500">
+                  {result.tally
+                    .sort((a, b) => b.votes - a.votes)
+                    .map((entry) => `${entry.playerName}:${entry.votes}`)
+                    .join(' / ')}
+                </div>
               </div>
-              <div className="text-sm font-bold">
-                {r.suspectName ?? 'no decision'}
-                {r.caughtCrookedCop && (
-                  <span className="ml-2 text-green-300">caught!</span>
-                )}
-              </div>
-              <div className="text-[10px] text-zinc-500 mt-2">
-                {r.tally
-                  .sort((a, b) => b.votes - a.votes)
-                  .map((t) => `${t.playerName}: ${t.votes}`)
-                  .join(' · ')}
-              </div>
-            </div>
+            </PixelPanel>
           ))}
         </div>
       )}

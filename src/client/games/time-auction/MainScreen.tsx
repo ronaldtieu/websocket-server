@@ -1,14 +1,22 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Trophy, Clock, Coins } from 'lucide-react';
+import { Trophy, Clock, Coins, Users, Hourglass } from 'lucide-react';
 import { socket } from '../../lib/socket';
+import {
+  PixelBadge,
+  PixelButton,
+  PixelMeter,
+  PixelPanel,
+  PIXEL_GRID_STYLE,
+  type PixelTone,
+} from '../../primitives/PixelHUD';
 import type { TimeAuctionPublicState } from './types';
 
 const PHASE_LABELS: Record<string, string> = {
-  countdown: 'Get ready',
-  bidding: 'Bidding open — hold to bid',
-  reveal: 'Round result',
-  finished: 'Game over',
+  countdown: 'Boot sequence',
+  bidding: 'Auction live',
+  reveal: 'Mint result',
+  finished: 'Session closed',
 };
 
 function formatSeconds(ms: number): string {
@@ -16,10 +24,25 @@ function formatSeconds(ms: number): string {
   return `${total.toFixed(1)}s`;
 }
 
-// big count-up clock for the bidding window. drives off the
-// server-supplied biddingStartedAt timestamp; the client just renders.
+function phaseTone(phase: string): PixelTone {
+  if (phase === 'countdown') return 'amber';
+  if (phase === 'bidding') return 'cyan';
+  if (phase === 'reveal') return 'rose';
+  if (phase === 'finished') return 'emerald';
+  return 'slate';
+}
+
+function statusTextForPlayer(player: TimeAuctionPublicState['players'][number]) {
+  if (player.isEliminated) return 'out';
+  if (player.isHolding) return 'holding';
+  if (player.hasReleased) return 'locked';
+  if (player.isTopTokens) return 'leader';
+  return 'idle';
+}
+
 function RoundClock({ startedAt }: { startedAt: number | null }) {
   const [now, setNow] = useState(() => Date.now());
+
   useEffect(() => {
     if (startedAt === null) return;
     const id = setInterval(() => setNow(Date.now()), 100);
@@ -27,13 +50,46 @@ function RoundClock({ startedAt }: { startedAt: number | null }) {
   }, [startedAt]);
 
   if (startedAt === null) {
-    return <div className="text-7xl font-black tracking-tighter font-mono text-zinc-700">0.0s</div>;
+    return <div className="text-7xl md:text-8xl font-black tracking-[-0.12em] text-zinc-700">0.0s</div>;
   }
+
   const elapsed = Math.max(0, now - startedAt);
   return (
-    <div className="text-7xl font-black tracking-tighter font-mono text-white">
+    <div className="text-7xl md:text-8xl font-black tracking-[-0.12em] text-white">
       {formatSeconds(elapsed)}
     </div>
+  );
+}
+
+function BiddingMeter({
+  startedAt,
+  deadline,
+}: {
+  startedAt: number | null;
+  deadline: number | null;
+}) {
+  const [now, setNow] = useState(() => Date.now());
+
+  useEffect(() => {
+    if (startedAt === null || deadline === null) return;
+    const id = setInterval(() => setNow(Date.now()), 100);
+    return () => clearInterval(id);
+  }, [startedAt, deadline]);
+
+  if (startedAt === null || deadline === null) return null;
+
+  const total = Math.max(1, deadline - startedAt);
+  const elapsed = Math.max(0, Math.min(total, now - startedAt));
+
+  return (
+    <PixelMeter
+      value={elapsed}
+      max={total}
+      blocks={18}
+      tone="cyan"
+      label="Auction clock"
+      valueLabel={formatSeconds(elapsed)}
+    />
   );
 }
 
@@ -46,141 +102,212 @@ export function TimeAuctionMainScreen({
   isHost: boolean;
   onReturnToLobby: () => void;
 }) {
+  const currentPhaseTone = phaseTone(state.phase);
   const phaseLabel = PHASE_LABELS[state.phase] ?? state.phase;
+  const completedRounds = state.phase === 'finished' ? state.totalRounds : Math.max(state.round - 1, 0);
+  const maxVisibleBank = Math.max(1, ...state.players.map((p) => p.timeBankMs));
+  const recentRounds = state.log.slice(-4).reverse();
+  const leaderCount = state.players.filter((p) => p.isTopTokens && !p.isEliminated).length;
+  const activePlayers = state.players.filter((p) => !p.isEliminated).length;
+  const totalTokens = useMemo(
+    () => state.players.reduce((sum, player) => sum + player.tokens, 0),
+    [state.players],
+  );
 
   return (
-    <div className="min-h-screen bg-black text-white px-12 pt-12 pb-28 flex flex-col gap-8 relative overflow-hidden">
-      <div
-        className="absolute inset-0 opacity-[0.03] pointer-events-none"
-        style={{
-          backgroundImage: 'radial-gradient(circle at 2px 2px, white 1px, transparent 0)',
-          backgroundSize: '40px 40px',
-        }}
-      />
+    <div className="min-h-screen bg-[#05060a] text-white px-4 md:px-10 pt-8 pb-28 flex flex-col gap-4 relative overflow-hidden font-mono">
+      <div className="absolute inset-0 opacity-40 pointer-events-none" style={PIXEL_GRID_STYLE} />
+      <div className="absolute inset-0 pointer-events-none bg-[radial-gradient(circle_at_top,rgba(255,211,110,0.10),transparent_28%),radial-gradient(circle_at_bottom,rgba(156,236,255,0.08),transparent_35%)]" />
 
-      {/* header */}
-      <div className="flex items-center justify-between relative z-10">
-        <div className="flex items-center gap-6">
-          <div className="w-16 h-16 bg-white rounded-2xl flex items-center justify-center shadow-2xl">
-            <Clock size={32} className="text-black" strokeWidth={2.5} />
-          </div>
-          <div>
-            <h1 className="text-4xl font-black tracking-tighter uppercase leading-none">Time Auction</h1>
-            <p className="text-zinc-600 text-[9px] font-bold uppercase tracking-[0.4em] mt-2">
-              Round {Math.max(state.round, 1)} / {state.totalRounds}
-            </p>
-          </div>
-        </div>
-        <div className="flex flex-col gap-2 min-w-[220px] items-end">
-          <div className="text-[10px] font-bold uppercase tracking-[0.3em] text-zinc-500">
-            {phaseLabel}
-          </div>
-        </div>
-      </div>
+      <div className="relative z-10 grid gap-4 xl:grid-cols-[1.35fr_0.65fr]">
+        <PixelPanel
+          tone="amber"
+          title="Arcade Market"
+          subtitle={`Round ${Math.max(state.round, 1)} / ${state.totalRounds}`}
+          meta={<PixelBadge tone={currentPhaseTone}>{phaseLabel}</PixelBadge>}
+        >
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+            <div className="flex items-center gap-4">
+              <div className="flex h-16 w-16 items-center justify-center border-[3px] border-amber-100 bg-[#ffd36e] text-[#1d1300] shadow-[6px_6px_0_rgba(0,0,0,0.35)]">
+                <Clock size={32} strokeWidth={2.6} />
+              </div>
+              <div>
+                <h1 className="text-4xl md:text-5xl font-black uppercase tracking-[-0.12em] leading-none">
+                  Time Auction
+                </h1>
+                <div className="mt-2 text-[11px] uppercase tracking-[0.24em] text-amber-200">
+                  Hold to bid. Burn time. Mint tokens.
+                </div>
+              </div>
+            </div>
 
-      {/* round progress bar */}
-      <div className="relative z-10">
-        <div className="h-[3px] bg-white/5 rounded-full overflow-hidden">
-          <motion.div
-            className="h-full bg-white"
-            initial={false}
-            animate={{
-              width: `${(Math.max(0, state.round - (state.phase === 'finished' ? 0 : 1)) / state.totalRounds) * 100}%`,
-            }}
-            transition={{ duration: 0.4 }}
+            <div className="grid grid-cols-2 gap-2 min-w-full sm:min-w-[250px]">
+              <div className="border-[3px] border-white/10 bg-black/25 px-3 py-2 shadow-[4px_4px_0_rgba(0,0,0,0.35)]">
+                <div className="text-[9px] uppercase tracking-[0.24em] text-amber-200">Active</div>
+                <div className="mt-1 flex items-end gap-2 text-white">
+                  <Users size={14} className="mb-1" />
+                  <span className="text-3xl font-black tracking-[-0.12em]">{activePlayers}</span>
+                </div>
+              </div>
+              <div className="border-[3px] border-white/10 bg-black/25 px-3 py-2 shadow-[4px_4px_0_rgba(0,0,0,0.35)]">
+                <div className="text-[9px] uppercase tracking-[0.24em] text-amber-200">Leaders</div>
+                <div className="mt-1 flex items-end gap-2 text-white">
+                  <Trophy size={14} className="mb-1" />
+                  <span className="text-3xl font-black tracking-[-0.12em]">{leaderCount}</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </PixelPanel>
+
+        <PixelPanel tone="cyan" title="Round Progress" subtitle="Token ladder">
+          <PixelMeter
+            value={completedRounds}
+            max={state.totalRounds}
+            blocks={state.totalRounds}
+            tone="cyan"
+            label="Completed"
+            valueLabel={`${completedRounds}/${state.totalRounds}`}
           />
-        </div>
+        </PixelPanel>
       </div>
 
-      {/* center stage */}
-      <div className="flex-1 flex items-center justify-center relative z-10">
-        {state.phase === 'countdown' && (
-          <CountdownDisplay deadline={state.phaseDeadline} />
-        )}
+      <div className="relative z-10 grid flex-1 gap-4 xl:grid-cols-[1.35fr_0.65fr]">
+        <PixelPanel
+          tone={currentPhaseTone}
+          title="Main Stage"
+          subtitle={phaseLabel}
+          className="min-h-[340px] flex flex-col"
+        >
+          <div className="flex-1 flex items-center justify-center">
+            {state.phase === 'countdown' && <CountdownDisplay deadline={state.phaseDeadline} />}
 
-        {state.phase === 'bidding' && (
-          <div className="flex flex-col items-center gap-6">
-            <div className="text-[10px] font-bold uppercase tracking-[0.5em] text-zinc-500">
-              Round Clock
-            </div>
-            <RoundClock startedAt={state.biddingStartedAt} />
-            <div className="text-zinc-500 text-xs uppercase font-bold tracking-[0.3em]">
-              Hidden bids in progress
-            </div>
+            {state.phase === 'bidding' && (
+              <div className="w-full max-w-2xl text-center space-y-8">
+                <div className="space-y-3">
+                  <div className="text-[10px] font-black uppercase tracking-[0.38em] text-cyan-200">
+                    Clock core
+                  </div>
+                  <RoundClock startedAt={state.biddingStartedAt} />
+                </div>
+                <BiddingMeter startedAt={state.biddingStartedAt} deadline={state.phaseDeadline} />
+                <div className="inline-flex flex-wrap items-center justify-center gap-2">
+                  <PixelBadge tone="cyan">Hidden bids</PixelBadge>
+                  <PixelBadge tone="amber">{totalTokens} TOK in play</PixelBadge>
+                </div>
+              </div>
+            )}
+
+            {state.phase === 'reveal' && state.lastReveal && <RevealBanner reveal={state.lastReveal} />}
+
+            {state.phase === 'finished' && <GameOver state={state} />}
           </div>
-        )}
+        </PixelPanel>
 
-        {state.phase === 'reveal' && state.lastReveal && (
-          <RevealBanner reveal={state.lastReveal} />
-        )}
+        <div className="flex flex-col gap-4">
+          <PixelPanel tone="slate" title="Market Stats" subtitle="Session telemetry">
+            <div className="grid grid-cols-2 gap-3">
+              <div className="border-[3px] border-white/8 bg-black/25 px-3 py-3 shadow-[4px_4px_0_rgba(0,0,0,0.35)]">
+                <div className="text-[9px] uppercase tracking-[0.24em] text-zinc-400">Tokens</div>
+                <div className="mt-2 flex items-end gap-2 text-white">
+                  <Coins size={16} className="mb-1 text-zinc-500" />
+                  <span className="text-3xl font-black tracking-[-0.12em]">{totalTokens}</span>
+                </div>
+              </div>
+              <div className="border-[3px] border-white/8 bg-black/25 px-3 py-3 shadow-[4px_4px_0_rgba(0,0,0,0.35)]">
+                <div className="text-[9px] uppercase tracking-[0.24em] text-zinc-400">Largest Bank</div>
+                <div className="mt-2 flex items-end gap-2 text-white">
+                  <Hourglass size={16} className="mb-1 text-zinc-500" />
+                  <span className="text-3xl font-black tracking-[-0.12em]">{formatSeconds(maxVisibleBank)}</span>
+                </div>
+              </div>
+            </div>
+          </PixelPanel>
 
-        {state.phase === 'finished' && <GameOver state={state} />}
-      </div>
-
-      {/* player tiles */}
-      <div className="relative z-10 grid grid-cols-2 md:grid-cols-4 lg:grid-cols-4 xl:grid-cols-8 gap-3">
-        {state.players.map((p) => {
-          const dim = state.phase === 'bidding' && p.hasReleased;
-          const lit = state.phase === 'bidding' && p.isHolding;
-          return (
-            <motion.div
-              key={p.id}
-              initial={false}
-              animate={{ opacity: dim ? 0.4 : 1 }}
-              className={`rounded-xl border p-4 flex flex-col gap-2 transition-colors ${
-                p.isEliminated
-                  ? 'border-red-500/20 bg-red-500/5'
-                  : lit
-                    ? 'border-white/40 bg-white/10'
-                    : p.isTopTokens
-                      ? 'border-white/30 bg-white/5'
-                      : 'border-white/5 bg-zinc-900/40'
-              }`}
-            >
-              <div className="text-[9px] font-bold uppercase tracking-widest text-zinc-400 truncate">
-                {p.name}
-              </div>
-              <div className="flex items-baseline gap-2">
-                <Coins size={12} className="text-zinc-500" />
-                <span className="text-2xl font-black tracking-tighter">{p.tokens}</span>
-                <span className="text-[9px] font-bold uppercase tracking-widest text-zinc-600">tok</span>
-              </div>
-              <div className="text-[9px] font-bold uppercase tracking-widest text-zinc-500 font-mono">
-                {formatSeconds(p.timeBankMs)} bank
-              </div>
-              {state.phase === 'bidding' && (
-                <div className="text-[8px] font-bold uppercase tracking-[0.3em] text-zinc-500">
-                  {p.isHolding ? 'holding' : p.hasReleased ? 'locked' : 'idle'}
+          <PixelPanel tone="rose" title="Recent Winners" subtitle="Last four rounds">
+            <div className="space-y-2">
+              {recentRounds.length === 0 && (
+                <div className="text-[11px] uppercase tracking-[0.18em] text-zinc-500">
+                  No reveals yet.
                 </div>
               )}
-              {p.isEliminated && (
-                <div className="text-[7px] font-bold uppercase tracking-[0.3em] text-red-400">out</div>
-              )}
-              {p.isTopTokens && !p.isEliminated && (
-                <div className="text-[7px] font-bold uppercase tracking-[0.3em] text-white/70">top</div>
-              )}
-            </motion.div>
+              {recentRounds.map((round) => (
+                <div
+                  key={round.round}
+                  className="flex items-center justify-between gap-3 border-[3px] border-white/8 bg-black/25 px-3 py-2 shadow-[4px_4px_0_rgba(0,0,0,0.25)]"
+                >
+                  <div>
+                    <div className="text-[9px] uppercase tracking-[0.24em] text-rose-200">
+                      Round {round.round}
+                    </div>
+                    <div className="mt-1 text-sm font-black uppercase tracking-[0.14em] text-white">
+                      {round.winnerName ?? 'No winner'}
+                    </div>
+                  </div>
+                  <PixelBadge tone={round.awardedRandomly ? 'amber' : 'rose'}>
+                    {round.awardedRandomly ? 'Random' : formatSeconds(round.winningBidMs ?? 0)}
+                  </PixelBadge>
+                </div>
+              ))}
+            </div>
+          </PixelPanel>
+        </div>
+      </div>
+
+      <div className="relative z-10 grid grid-cols-2 lg:grid-cols-4 xl:grid-cols-8 gap-3">
+        {state.players.map((player) => {
+          const tone: PixelTone = player.isEliminated
+            ? 'rose'
+            : player.isHolding
+              ? 'cyan'
+              : player.isTopTokens
+                ? 'amber'
+                : 'slate';
+          const status = statusTextForPlayer(player);
+
+          return (
+            <PixelPanel
+              key={player.id}
+              tone={tone}
+              title={player.name}
+              subtitle="Bidder unit"
+              meta={<PixelBadge tone={tone}>{status}</PixelBadge>}
+              className="min-h-[160px]"
+            >
+              <div className="space-y-3">
+                <div className="flex items-end gap-2">
+                  <Coins size={14} className="mb-1 text-zinc-500" />
+                  <span className="text-3xl font-black tracking-[-0.12em] text-white">
+                    {player.tokens}
+                  </span>
+                  <span className="text-[10px] uppercase tracking-[0.22em] text-zinc-500">tok</span>
+                </div>
+                <PixelMeter
+                  value={player.timeBankMs}
+                  max={maxVisibleBank}
+                  blocks={8}
+                  tone={tone}
+                  label="Bank"
+                  valueLabel={formatSeconds(player.timeBankMs)}
+                />
+              </div>
+            </PixelPanel>
           );
         })}
       </div>
 
-      {/* host controls */}
       {isHost && (
         <>
-          <div className="absolute bottom-6 left-6 flex gap-2 z-20">
-            <button
-              onClick={() => socket.emit('host-skip-phase')}
-              className="px-4 py-2 bg-white/5 border border-white/10 rounded-lg text-[9px] font-bold uppercase tracking-widest text-zinc-400 hover:bg-white/10 hover:text-white transition-all"
-            >
+          <div className="absolute bottom-6 left-6 z-20">
+            <PixelButton tone="cyan" variant="ghost" onClick={() => socket.emit('host-skip-phase')}>
               Skip Phase
-            </button>
+            </PixelButton>
           </div>
-          <button
-            onClick={onReturnToLobby}
-            className="absolute bottom-6 right-6 z-20 px-4 py-2 bg-red-500/10 border border-red-500/40 rounded-lg text-[9px] font-bold uppercase tracking-widest text-red-300 hover:bg-red-500/20 hover:text-white transition-all"
-          >
-            End Game
-          </button>
+          <div className="absolute bottom-6 right-6 z-20">
+            <PixelButton tone="rose" variant="ghost" onClick={onReturnToLobby}>
+              End Game
+            </PixelButton>
+          </div>
         </>
       )}
     </div>
@@ -189,16 +316,26 @@ export function TimeAuctionMainScreen({
 
 function CountdownDisplay({ deadline }: { deadline: number | null }) {
   const [now, setNow] = useState(() => Date.now());
+
   useEffect(() => {
     if (deadline === null) return;
     const id = setInterval(() => setNow(Date.now()), 100);
     return () => clearInterval(id);
   }, [deadline]);
+
   const remainingSec = deadline === null ? 0 : Math.max(0, Math.ceil((deadline - now) / 1000));
+
   return (
-    <div className="text-center space-y-4">
-      <div className="text-[10px] font-bold uppercase tracking-[0.5em] text-zinc-500">Get ready</div>
-      <div className="text-9xl font-black tracking-tighter text-white">{remainingSec}</div>
+    <div className="text-center space-y-5">
+      <div className="inline-flex justify-center">
+        <PixelBadge tone="amber">Get ready</PixelBadge>
+      </div>
+      <div className="text-8xl md:text-9xl font-black tracking-[-0.16em] text-white">
+        {remainingSec}
+      </div>
+      <div className="text-[11px] uppercase tracking-[0.22em] text-amber-200">
+        Auction bay opening
+      </div>
     </div>
   );
 }
@@ -212,26 +349,30 @@ function RevealBanner({
     <AnimatePresence>
       <motion.div
         key={reveal.round}
-        initial={{ scale: 0.9, opacity: 0 }}
+        initial={{ scale: 0.95, opacity: 0 }}
         animate={{ scale: 1, opacity: 1 }}
         exit={{ opacity: 0 }}
-        className="text-center space-y-4"
+        className="w-full max-w-xl text-center space-y-5"
       >
-        <Trophy size={56} className="mx-auto text-white" />
-        <div className="text-[10px] font-bold uppercase tracking-[0.5em] text-zinc-500">
-          Round {reveal.round} winner
+        <div className="inline-flex justify-center">
+          <PixelBadge tone="rose">Round {reveal.round}</PixelBadge>
         </div>
+        <Trophy size={56} className="mx-auto text-white" />
         {reveal.winnerName ? (
           <>
-            <div className="text-6xl font-black uppercase tracking-tighter">{reveal.winnerName}</div>
-            <div className="text-zinc-400 text-sm uppercase tracking-widest font-bold">
-              {reveal.awardedRandomly
-                ? 'No bids — random award'
-                : `Winning bid: ${formatSeconds(reveal.winningBidMs ?? 0)}`}
+            <div className="text-5xl md:text-6xl font-black uppercase tracking-[-0.12em] text-white">
+              {reveal.winnerName}
+            </div>
+            <div className="inline-flex justify-center">
+              <PixelBadge tone={reveal.awardedRandomly ? 'amber' : 'rose'}>
+                {reveal.awardedRandomly
+                  ? 'No bids. Random token.'
+                  : `Winning bid ${formatSeconds(reveal.winningBidMs ?? 0)}`}
+              </PixelBadge>
             </div>
           </>
         ) : (
-          <div className="text-zinc-500 uppercase tracking-widest font-bold">No winner</div>
+          <div className="text-[11px] uppercase tracking-[0.22em] text-zinc-400">No winner</div>
         )}
       </motion.div>
     </AnimatePresence>
@@ -240,32 +381,39 @@ function RevealBanner({
 
 function GameOver({ state }: { state: TimeAuctionPublicState }) {
   const sorted = [...state.players].sort((a, b) => b.tokens - a.tokens);
+
   return (
-    <div className="text-center space-y-6">
+    <div className="w-full max-w-4xl space-y-6 text-center">
       <Trophy size={64} className="mx-auto text-white" />
-      <h2 className="text-5xl font-black uppercase tracking-tighter">Game Over</h2>
-      <div className="text-zinc-500 text-xs uppercase font-bold tracking-[0.4em]">
-        Final tokens
+      <div className="text-5xl md:text-6xl font-black uppercase tracking-[-0.12em] text-white">
+        Game Over
       </div>
-      <div className="flex justify-center gap-3 flex-wrap max-w-3xl mx-auto">
-        {sorted.map((p) => (
-          <div
-            key={p.id}
-            className={`px-4 py-3 rounded-xl border text-left ${
-              p.isEliminated
-                ? 'border-red-500/40 bg-red-500/10'
-                : p.isTopTokens
-                  ? 'border-white/40 bg-white/10'
-                  : 'border-white/10 bg-zinc-900/40'
-            }`}
+      <div className="inline-flex justify-center">
+        <PixelBadge tone="emerald">Final token stack</PixelBadge>
+      </div>
+      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3">
+        {sorted.map((player) => (
+          <PixelPanel
+            key={player.id}
+            tone={player.isEliminated ? 'rose' : player.isTopTokens ? 'amber' : 'slate'}
+            title={player.name}
+            subtitle="Final standing"
           >
-            <div className="text-[9px] font-bold uppercase tracking-widest text-zinc-400">
-              {p.name}
+            <div className="space-y-2">
+              <div className="text-4xl font-black tracking-[-0.12em] text-white">{player.tokens}</div>
+              <div className="text-[10px] uppercase tracking-[0.22em] text-zinc-400">tokens</div>
+              {player.isTopTokens && (
+                <PixelBadge tone="amber" className="mt-2">
+                  +1 piece
+                </PixelBadge>
+              )}
+              {player.isEliminated && (
+                <PixelBadge tone="rose" className="mt-2">
+                  Eliminated
+                </PixelBadge>
+              )}
             </div>
-            <div className="text-2xl font-black">{p.tokens} tok</div>
-            {p.isTopTokens && <div className="text-[8px] uppercase tracking-widest text-white/70">+1 piece</div>}
-            {p.isEliminated && <div className="text-[8px] uppercase tracking-widest text-red-300">eliminated</div>}
-          </div>
+          </PixelPanel>
         ))}
       </div>
     </div>

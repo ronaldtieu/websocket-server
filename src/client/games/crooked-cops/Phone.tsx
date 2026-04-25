@@ -2,210 +2,220 @@ import { useMemo, useState } from 'react';
 import { Trophy } from 'lucide-react';
 import { PhaseTimer } from '../../primitives/PhaseTimer';
 import { socket } from '../../lib/socket';
+import {
+  PixelBadge,
+  PixelButton,
+  PixelPanel,
+  PIXEL_GRID_STYLE,
+  type PixelTone,
+} from '../../primitives/PixelHUD';
 import type { CrookedCopsStateForPlayer, NodeId, TeamColor } from './types';
 
 const TEAM_COLORS: Record<TeamColor, string> = {
   red: '#ef4444',
-  blue: '#3b82f6',
-  green: '#22c55e',
+  blue: '#60a5fa',
+  green: '#34d399',
 };
 
 const VIEW_W = 360;
 const VIEW_H = 360;
 
+function phaseLabel(phase: string): string {
+  const map: Record<string, string> = {
+    'thief-phase': 'Thief phase',
+    'police-phase': 'Police phase',
+    'arrest-resolution': 'Arrest resolution',
+    checkpoint: 'Checkpoint',
+    'whistleblower-vote': 'Whistleblower vote',
+    finished: 'Finished',
+  };
+  return map[phase] ?? phase;
+}
+
+function phaseTone(phase: string): PixelTone {
+  if (phase === 'thief-phase') return 'amber';
+  if (phase === 'police-phase') return 'cyan';
+  if (phase === 'arrest-resolution') return 'rose';
+  if (phase === 'checkpoint') return 'emerald';
+  if (phase === 'whistleblower-vote') return 'amber';
+  if (phase === 'finished') return 'slate';
+  return 'slate';
+}
+
 export function CrookedCopsPhone({ state }: { state: CrookedCopsStateForPlayer }) {
   const me = state.me;
+
   if (!me) {
     return (
-      <div className="min-h-screen bg-black p-6 flex items-center justify-center">
-        <div className="text-center text-zinc-500 text-xs uppercase font-bold tracking-widest">
-          Spectating
-        </div>
+      <div className="min-h-screen bg-[#040707] p-6 flex items-center justify-center font-mono">
+        <PixelBadge tone="slate">Spectating</PixelBadge>
       </div>
     );
   }
 
-  const myPlayer = state.players.find((p) => p.id === me.playerId);
+  const myPlayer = state.players.find((player) => player.id === me.playerId);
   const teamColor = me.team ? TEAM_COLORS[me.team] : '#888';
+  const roleText = me.role === 'thief' ? 'Thief' : `${me.team ?? 'cop'} cop`;
+  const currentPhaseTone = phaseTone(state.phase);
 
   return (
-    <div className="min-h-screen bg-black text-white p-5 flex flex-col gap-4 selection:bg-white selection:text-black">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <div className="text-[9px] font-bold uppercase tracking-[0.3em] text-zinc-600">You</div>
-          <div className="text-lg font-black uppercase tracking-tight">
-            {myPlayer?.name ?? 'Player'}
+    <div className="min-h-screen bg-[#040707] text-white p-4 flex flex-col gap-4 selection:bg-white selection:text-black relative overflow-hidden font-mono">
+      <div className="absolute inset-0 opacity-30 pointer-events-none" style={PIXEL_GRID_STYLE} />
+      <div className="absolute inset-0 pointer-events-none bg-[radial-gradient(circle_at_top,rgba(52,211,153,0.08),transparent_30%),radial-gradient(circle_at_bottom,rgba(96,165,250,0.08),transparent_36%)]" />
+
+      <div className="relative z-10 grid grid-cols-2 gap-3">
+        <PixelPanel tone="emerald" title="Operator" subtitle={myPlayer?.name ?? 'Player'}>
+          <div className="text-[11px] uppercase tracking-[0.18em]" style={{ color: teamColor }}>
+            {roleText}
           </div>
-        </div>
-        <div className="text-right">
-          <div className="text-[9px] font-bold uppercase tracking-[0.3em] text-zinc-600">Role</div>
-          <div className="text-sm font-black uppercase tracking-widest" style={{ color: teamColor }}>
-            {/* Crooked cop and ordinary cop look identical here — only the
-                tracker panel below differs. */}
-            {me.role === 'thief' ? 'Thief' : `${me.team ?? 'cop'} cop`}
-          </div>
-        </div>
+        </PixelPanel>
+
+        <PixelPanel tone={currentPhaseTone} title="Phase" subtitle={`Round ${state.round} / ${state.totalRounds}`}>
+          <PhaseTimer deadline={state.phaseDeadline} label={phaseLabel(state.phase)} />
+        </PixelPanel>
       </div>
 
-      <PhaseTimer
-        deadline={state.phaseDeadline}
-        label={`Round ${state.round} / ${state.totalRounds} · ${phaseLabel(state.phase)}`}
-      />
-
-      {/* Phase content */}
-      <div className="flex-1 flex flex-col gap-4">
-        {state.phase === 'thief-phase' && me.role === 'thief' && (
-          <ThiefMovePanel state={state} />
-        )}
+      <div className="relative z-10 flex-1 flex flex-col gap-4">
+        {state.phase === 'thief-phase' && me.role === 'thief' && <ThiefMovePanel state={state} />}
         {state.phase === 'thief-phase' && me.role !== 'thief' && (
-          <CenterMessage>Thieves are moving...</CenterMessage>
+          <CenterMessage tone="amber">Thieves are moving through the subway...</CenterMessage>
         )}
 
-        {state.phase === 'police-phase' &&
-          (me.role === 'cop' || me.role === 'crooked-cop') && (
-            <CopActionPanel state={state} />
-          )}
+        {state.phase === 'police-phase' && (me.role === 'cop' || me.role === 'crooked-cop') && (
+          <CopActionPanel state={state} />
+        )}
         {state.phase === 'police-phase' && me.role === 'thief' && (
-          <CenterMessage>Police are acting. Hide.</CenterMessage>
+          <CenterMessage tone="cyan">Police are acting. Stay hidden.</CenterMessage>
         )}
 
         {state.phase === 'arrest-resolution' && (
-          <CenterMessage>{state.lastArrest ? 'Resolving arrest...' : 'No arrest this turn.'}</CenterMessage>
+          <CenterMessage tone="rose">
+            {state.lastArrest ? 'Resolving arrest attempt...' : 'No arrest this turn.'}
+          </CenterMessage>
         )}
 
         {state.phase === 'checkpoint' && (
-          <CenterMessage>
-            Checkpoint! Pieces so far: <span className="text-white font-bold">{state.publicPieceCount ?? '?'}</span>
+          <CenterMessage tone="emerald">
+            Checkpoint. Public pieces: <span className="font-black text-white">{state.publicPieceCount ?? '?'}</span>
           </CenterMessage>
         )}
 
         {state.phase === 'whistleblower-vote' &&
           (me.role === 'cop' || me.role === 'crooked-cop') && <VotePanel state={state} />}
         {state.phase === 'whistleblower-vote' && me.role === 'thief' && (
-          <CenterMessage>Cops are voting on the crooked one...</CenterMessage>
+          <CenterMessage tone="amber">Cops are voting on the crooked one...</CenterMessage>
         )}
 
         {state.phase === 'finished' && (
-          <div className="text-center mt-6 space-y-3">
-            <Trophy size={48} className="mx-auto text-white" />
-            <div className="text-xl font-black uppercase tracking-tighter">Game over</div>
-            {state.outcome && (
-              <div className="text-zinc-400 text-sm">
-                {state.outcome.winner.replace('-', ' ')} · pieces {state.outcome.piecesCollected}/12
-              </div>
-            )}
-          </div>
+          <CenterMessage tone="slate">
+            <div className="text-center space-y-3">
+              <Trophy size={48} className="mx-auto text-white" />
+              <div className="text-2xl font-black uppercase tracking-[-0.1em] text-white">Game Over</div>
+              {state.outcome && (
+                <PixelBadge tone="amber">
+                  {state.outcome.winner.replace('-', ' ')} / pieces {state.outcome.piecesCollected}/12
+                </PixelBadge>
+              )}
+            </div>
+          </CenterMessage>
         )}
 
-        {/* Investigation result modal — only for cops */}
         {me.lastInvestigation && (me.role === 'cop' || me.role === 'crooked-cop') && (
-          <div className="rounded-xl border border-white/10 bg-zinc-900/60 p-3">
-            <div className="text-[9px] font-bold uppercase tracking-[0.3em] text-zinc-500">
-              Investigation result
+          <PixelPanel tone="cyan" title="Investigation Result" subtitle={me.lastInvestigation.node}>
+            <div className="text-sm uppercase tracking-[0.16em] text-white">
+              {me.lastInvestigation.thiefPassed ? 'Thief passed through.' : 'No trace found.'}
             </div>
-            <div className="text-sm mt-1">
-              <span className="font-mono">{me.lastInvestigation.node}</span>:{' '}
-              <span className="font-bold">
-                {me.lastInvestigation.thiefPassed ? 'Thief passed through!' : 'No trace.'}
-              </span>
-            </div>
-          </div>
+          </PixelPanel>
         )}
 
-        {/* Radio chat — cops only */}
         {(me.role === 'cop' || me.role === 'crooked-cop') && me.team && (
           <RadioPanel state={state} team={me.team} />
         )}
 
-        {/* Crooked-cop-only tracker panel. The ONLY place the role differs
-            visually from an ordinary cop. */}
-        {me.role === 'crooked-cop' && (
-          <CrookedTrackerPanel state={state} />
-        )}
+        {me.role === 'crooked-cop' && <CrookedTrackerPanel state={state} />}
       </div>
     </div>
   );
 }
 
-function phaseLabel(p: string): string {
-  const map: Record<string, string> = {
-    'thief-phase': 'Thief',
-    'police-phase': 'Police',
-    'arrest-resolution': 'Arrest',
-    checkpoint: 'Checkpoint',
-    'whistleblower-vote': 'Vote',
-    finished: 'Done',
-  };
-  return map[p] ?? p;
-}
-
-function CenterMessage({ children }: { children: React.ReactNode }) {
+function CenterMessage({
+  children,
+  tone = 'slate',
+}: {
+  children: React.ReactNode;
+  tone?: PixelTone;
+}) {
   return (
-    <div className="text-center text-sm text-zinc-400 mt-8 px-4 leading-relaxed">{children}</div>
+    <PixelPanel tone={tone} title="Status" subtitle="Live feed" className="text-center">
+      <div className="text-sm uppercase tracking-[0.16em] text-zinc-300 leading-relaxed">{children}</div>
+    </PixelPanel>
   );
 }
 
 function ThiefMovePanel({ state }: { state: CrookedCopsStateForPlayer }) {
   const me = state.me!;
-  const myPlayer = state.players.find((p) => p.id === me.playerId);
+  const myPlayer = state.players.find((player) => player.id === me.playerId);
   const myNode = myPlayer?.node ?? null;
-  const partner = state.players.find((p) => p.id === me.partnerId);
+  const partner = state.players.find((player) => player.id === me.partnerId);
 
   const reachable = useMemo(() => {
     if (!myNode) return [];
     const within = nodesWithin(state.graph.adjacency, myNode, 2);
     const cops = new Set(
-      state.players.filter((p) => p.publicRole === 'cop' && p.node).map((p) => p.node as NodeId),
+      state.players.filter((player) => player.publicRole === 'cop' && player.node).map((player) => player.node as NodeId),
     );
-    return within.filter((n) => n !== myNode && !cops.has(n));
+    return within.filter((node) => node !== myNode && !cops.has(node));
   }, [myNode, state.graph.adjacency, state.players]);
 
   const pieces = new Set(me.visiblePieceNodes ?? []);
   const [hover, setHover] = useState<NodeId | null>(null);
 
   return (
-    <div className="space-y-3">
-      <div className="text-[10px] font-bold uppercase tracking-[0.4em] text-zinc-500">
-        Move (up to 2 stations)
-      </div>
-      <MiniGraph
-        state={state}
-        highlight={new Set(reachable)}
-        you={myNode}
-        partner={partner?.node ?? null}
-        pieces={pieces}
-        hover={hover}
-        onTap={(n) => {
-          if (!reachable.includes(n)) return;
-          socket.emit('game-action', {
-            type: 'crooked-cops/move',
-            payload: { toNode: n },
-          });
-        }}
-        onHover={setHover}
-      />
-      <div className="text-[10px] text-zinc-500 text-center">
-        Tap a glowing station. Cops block your tile.
-      </div>
-      {partner && (
-        <div className="text-[10px] text-zinc-500 text-center">
-          Partner thief: {partner.name} @ {partner.node ?? '?'}
+    <PixelPanel
+      tone="amber"
+      title="Move"
+      subtitle="Up to 2 stations"
+      meta={<PixelBadge tone="amber">{myNode ?? '?'}</PixelBadge>}
+    >
+      <div className="space-y-3">
+        <MiniGraph
+          state={state}
+          highlight={new Set(reachable)}
+          you={myNode}
+          partner={partner?.node ?? null}
+          pieces={pieces}
+          hover={hover}
+          onTap={(node) => {
+            if (!reachable.includes(node)) return;
+            socket.emit('game-action', {
+              type: 'crooked-cops/move',
+              payload: { toNode: node },
+            });
+          }}
+          onHover={setHover}
+        />
+        <div className="text-[10px] uppercase tracking-[0.18em] text-amber-200 text-center">
+          Tap a glowing station. Cops block your tile.
         </div>
-      )}
-    </div>
+        {partner && (
+          <div className="text-center">
+            <PixelBadge tone="slate">Partner {partner.name} @ {partner.node ?? '?'}</PixelBadge>
+          </div>
+        )}
+      </div>
+    </PixelPanel>
   );
 }
 
 function CopActionPanel({ state }: { state: CrookedCopsStateForPlayer }) {
   const me = state.me!;
-  const myPlayer = state.players.find((p) => p.id === me.playerId);
+  const myPlayer = state.players.find((player) => player.id === me.playerId);
   const myNode = myPlayer?.node ?? null;
 
   const reachable = useMemo(() => {
     if (!myNode) return [];
     const within = nodesWithin(state.graph.adjacency, myNode, 1);
-    return within.filter((n) => n !== myNode);
+    return within.filter((node) => node !== myNode);
   }, [myNode, state.graph.adjacency]);
 
   const arrestTargets = useMemo(() => {
@@ -213,78 +223,84 @@ function CopActionPanel({ state }: { state: CrookedCopsStateForPlayer }) {
     return [myNode, ...(state.graph.adjacency[myNode] ?? [])];
   }, [myNode, state.graph.adjacency]);
 
-  const hasMoved = myPlayer?.hasActedThisPhase || (reachable.length > 0 && false);
-  // hasActedThisPhase is true only after both move + action; but server gates
-  // re-moves with a clear error. Show buttons regardless and rely on errors.
-
   return (
-    <div className="space-y-3">
-      <div className="text-[10px] font-bold uppercase tracking-[0.4em] text-zinc-500">
-        Police phase — move 1, then act
-      </div>
-      <MiniGraph
-        state={state}
-        highlight={new Set(reachable)}
-        you={myNode}
-        partner={null}
-        pieces={new Set(me.visiblePieceNodes ?? [])}
-        onTap={(n) => {
-          if (!reachable.includes(n)) return;
-          socket.emit('game-action', {
-            type: 'crooked-cops/move',
-            payload: { toNode: n },
-          });
-        }}
-      />
-      <div className="grid grid-cols-2 gap-2">
-        <button
-          onClick={() =>
+    <PixelPanel
+      tone="cyan"
+      title="Police Actions"
+      subtitle="Move 1, then act"
+      meta={<PixelBadge tone="cyan">{myNode ?? '?'}</PixelBadge>}
+    >
+      <div className="space-y-3">
+        <MiniGraph
+          state={state}
+          highlight={new Set(reachable)}
+          you={myNode}
+          partner={null}
+          pieces={new Set(me.visiblePieceNodes ?? [])}
+          onTap={(node) => {
+            if (!reachable.includes(node)) return;
             socket.emit('game-action', {
-              type: 'crooked-cops/investigate',
-              payload: { node: myNode },
-            })
-          }
-          disabled={!myNode}
-          className="py-3 rounded-xl bg-white text-black font-bold uppercase tracking-widest text-xs disabled:opacity-30"
-        >
-          Investigate
-        </button>
-        <ArrestButton targets={arrestTargets} />
+              type: 'crooked-cops/move',
+              payload: { toNode: node },
+            });
+          }}
+        />
+        <div className="grid grid-cols-2 gap-2">
+          <PixelButton
+            tone="cyan"
+            className="w-full"
+            disabled={!myNode}
+            onClick={() =>
+              socket.emit('game-action', {
+                type: 'crooked-cops/investigate',
+                payload: { node: myNode },
+              })
+            }
+          >
+            Investigate
+          </PixelButton>
+          <ArrestButton targets={arrestTargets} />
+        </div>
+        {myPlayer?.hasActedThisPhase && (
+          <div className="text-[10px] uppercase tracking-[0.18em] text-zinc-500 text-center">
+            Acted this phase.
+          </div>
+        )}
       </div>
-      {hasMoved && (
-        <div className="text-[10px] text-zinc-500 text-center">Acted this round.</div>
-      )}
-    </div>
+    </PixelPanel>
   );
 }
 
 function ArrestButton({ targets }: { targets: NodeId[] }) {
   const [open, setOpen] = useState(false);
+
   return (
     <div className="relative">
-      <button
-        onClick={() => setOpen((v) => !v)}
-        className="w-full py-3 rounded-xl bg-red-600 text-white font-bold uppercase tracking-widest text-xs"
-      >
+      <PixelButton tone="rose" className="w-full" onClick={() => setOpen((value) => !value)}>
         Arrest
-      </button>
+      </PixelButton>
       {open && (
-        <div className="absolute left-0 right-0 mt-2 bg-zinc-900 border border-white/10 rounded-lg p-2 z-10 grid grid-cols-3 gap-1">
-          {targets.map((n) => (
-            <button
-              key={n}
-              onClick={() => {
-                setOpen(false);
-                socket.emit('game-action', {
-                  type: 'crooked-cops/arrest',
-                  payload: { targetNode: n },
-                });
-              }}
-              className="px-2 py-1 text-[10px] font-mono bg-zinc-800 hover:bg-zinc-700 rounded"
-            >
-              {n}
-            </button>
-          ))}
+        <div className="absolute left-0 right-0 mt-2 z-10 border-[3px] border-rose-300/30 bg-[#17080d] p-2 shadow-[6px_6px_0_rgba(0,0,0,0.35)]">
+          <div className="grid grid-cols-3 gap-1">
+            {targets.map((node) => (
+              <PixelButton
+                key={node}
+                tone="rose"
+                variant="ghost"
+                size="sm"
+                className="w-full"
+                onClick={() => {
+                  setOpen(false);
+                  socket.emit('game-action', {
+                    type: 'crooked-cops/arrest',
+                    payload: { targetNode: node },
+                  });
+                }}
+              >
+                {node}
+              </PixelButton>
+            ))}
+          </div>
         </div>
       )}
     </div>
@@ -293,109 +309,117 @@ function ArrestButton({ targets }: { targets: NodeId[] }) {
 
 function VotePanel({ state }: { state: CrookedCopsStateForPlayer }) {
   const me = state.me!;
-  const teammates = state.players.filter((p) => p.team === me.team && p.id !== me.playerId);
+  const teammates = state.players.filter((player) => player.team === me.team && player.id !== me.playerId);
+
   return (
-    <div className="space-y-3">
-      <div className="text-[10px] font-bold uppercase tracking-[0.4em] text-zinc-500">
-        Whistleblower — pick the crooked one on your team
+    <PixelPanel tone="amber" title="Whistleblower Vote" subtitle="Pick the crooked cop">
+      <div className="space-y-3">
+        <div className="grid grid-cols-2 gap-2">
+          {teammates.map((player) => (
+            <PixelButton
+              key={player.id}
+              tone="amber"
+              variant={me.hasVoted ? 'ghost' : 'solid'}
+              className="w-full"
+              disabled={me.hasVoted}
+              onClick={() =>
+                socket.emit('game-action', {
+                  type: 'crooked-cops/vote',
+                  payload: { suspectId: player.id },
+                })
+              }
+            >
+              {player.name}
+            </PixelButton>
+          ))}
+        </div>
+        {me.hasVoted && (
+          <div className="text-center">
+            <PixelBadge tone="amber">Vote locked</PixelBadge>
+          </div>
+        )}
       </div>
-      <div className="grid grid-cols-2 gap-2">
-        {teammates.map((p) => (
-          <button
-            key={p.id}
-            disabled={me.hasVoted}
-            onClick={() =>
-              socket.emit('game-action', {
-                type: 'crooked-cops/vote',
-                payload: { suspectId: p.id },
-              })
-            }
-            className="py-3 rounded-xl border border-white/10 bg-zinc-900 text-sm font-bold uppercase tracking-widest hover:bg-zinc-800 disabled:opacity-30"
-          >
-            {p.name}
-          </button>
-        ))}
-      </div>
-      {me.hasVoted && (
-        <div className="text-[10px] text-zinc-500 text-center">Vote locked in.</div>
-      )}
-    </div>
+    </PixelPanel>
   );
 }
 
 function RadioPanel({ state, team }: { state: CrookedCopsStateForPlayer; team: TeamColor }) {
   const [text, setText] = useState('');
+
   return (
-    <div className="rounded-xl border border-white/10 bg-zinc-900/60 p-3 space-y-2">
-      <div className="text-[10px] font-bold uppercase tracking-[0.3em] text-zinc-500">
-        Team radio · {team}
+    <PixelPanel tone="slate" title={`Team Radio ${team}`} subtitle="Private chat">
+      <div className="space-y-3">
+        <div className="max-h-40 overflow-y-auto space-y-2 text-[12px]">
+          {state.radio.length === 0 && (
+            <div className="text-zinc-600 italic text-[11px] uppercase tracking-[0.16em]">
+              No chatter yet.
+            </div>
+          )}
+          {state.radio.map((message, index) => (
+            <div key={index} className="border-[3px] border-white/8 bg-black/25 px-3 py-2 shadow-[4px_4px_0_rgba(0,0,0,0.25)]">
+              <span className="font-black uppercase tracking-[0.16em] text-white">{message.fromName}:</span>{' '}
+              <span className="text-zinc-300 uppercase tracking-[0.12em]">{message.text}</span>
+            </div>
+          ))}
+        </div>
+        <div className="flex gap-2">
+          <input
+            value={text}
+            onChange={(event) => setText(event.target.value)}
+            placeholder="say something..."
+            className="flex-1 bg-[#0d0d12] border-[3px] border-white/10 rounded-[6px] px-3 py-2 text-xs uppercase tracking-[0.14em] outline-none text-white"
+          />
+          <PixelButton
+            tone="cyan"
+            size="sm"
+            onClick={() => {
+              const trimmed = text.trim();
+              if (!trimmed) return;
+              socket.emit('game-action', {
+                type: 'crooked-cops/radio',
+                payload: { team, text: trimmed },
+              });
+              setText('');
+            }}
+          >
+            Send
+          </PixelButton>
+        </div>
       </div>
-      <div className="max-h-40 overflow-y-auto space-y-1 text-[12px]">
-        {state.radio.length === 0 && (
-          <div className="text-zinc-600 italic text-[11px]">No chatter yet.</div>
-        )}
-        {state.radio.map((m, i) => (
-          <div key={i}>
-            <span className="font-bold">{m.fromName}:</span>{' '}
-            <span className="text-zinc-300">{m.text}</span>
-          </div>
-        ))}
-      </div>
-      <div className="flex gap-2">
-        <input
-          value={text}
-          onChange={(e) => setText(e.target.value)}
-          placeholder="say something..."
-          className="flex-1 bg-zinc-800 border border-white/10 rounded px-2 py-1 text-xs outline-none"
-        />
-        <button
-          onClick={() => {
-            const t = text.trim();
-            if (!t) return;
-            socket.emit('game-action', {
-              type: 'crooked-cops/radio',
-              payload: { team, text: t },
-            });
-            setText('');
-          }}
-          className="px-3 py-1 bg-white text-black text-[10px] font-bold uppercase tracking-widest rounded"
-        >
-          Send
-        </button>
-      </div>
-    </div>
+    </PixelPanel>
   );
 }
 
 function CrookedTrackerPanel({ state }: { state: CrookedCopsStateForPlayer }) {
   const me = state.me!;
   const recent = me.privatePings.slice(-5);
+
   return (
-    <div className="rounded-xl border border-amber-500/40 bg-amber-500/5 p-3 space-y-2">
-      <div className="text-[10px] font-bold uppercase tracking-[0.3em] text-amber-300">
-        Private feed
-      </div>
-      <div className="space-y-1 text-[11px] text-amber-100">
+    <PixelPanel tone="rose" title="Private Feed" subtitle="Crooked intel">
+      <div className="space-y-2">
         {recent.length === 0 ? (
-          <div className="italic text-amber-300/60">No thief moves yet this game.</div>
+          <div className="text-[11px] uppercase tracking-[0.16em] text-rose-200/60">
+            No thief moves yet this game.
+          </div>
         ) : (
-          recent.map((p, i) => (
-            <div key={i}>
-              <span className="opacity-60">R{p.round}:</span> {p.text}
+          recent.map((ping, index) => (
+            <div
+              key={index}
+              className="border-[3px] border-white/8 bg-black/25 px-3 py-2 text-[11px] uppercase tracking-[0.14em] text-rose-100 shadow-[4px_4px_0_rgba(0,0,0,0.25)]"
+            >
+              <span className="text-rose-200/60">R{ping.round}</span> / {ping.text}
             </div>
           ))
         )}
+        {me.partnerName && (
+          <div className="text-center">
+            <PixelBadge tone="amber">Other crooked cop {me.partnerName}</PixelBadge>
+          </div>
+        )}
       </div>
-      {me.partnerName && (
-        <div className="text-[10px] text-amber-300/80">
-          Other crooked cop: <span className="font-bold">{me.partnerName}</span>
-        </div>
-      )}
-    </div>
+    </PixelPanel>
   );
 }
-
-// --- mini-graph (used in both move panels) ---
 
 function MiniGraph({
   state,
@@ -413,42 +437,62 @@ function MiniGraph({
   partner: NodeId | null;
   pieces: Set<NodeId>;
   hover?: NodeId | null;
-  onTap: (n: NodeId) => void;
-  onHover?: (n: NodeId | null) => void;
+  onTap: (node: NodeId) => void;
+  onHover?: (node: NodeId | null) => void;
 }) {
   const layout = state.graph.layout;
-  const cops = state.players.filter((p) => p.publicRole === 'cop' && p.node);
-  const thieves = state.players.filter((p) => p.publicRole === 'thief' && p.node);
+  const cops = state.players.filter((player) => player.publicRole === 'cop' && player.node);
+  const thieves = state.players.filter((player) => player.publicRole === 'thief' && player.node);
 
   return (
     <svg
       viewBox={`0 0 ${VIEW_W} ${VIEW_H}`}
-      className="w-full aspect-square bg-zinc-950 rounded-xl border border-white/5"
+      className="w-full aspect-square border-[3px] border-white/10 bg-[#07110f] shadow-[6px_6px_0_rgba(0,0,0,0.35)]"
     >
+      <defs>
+        <pattern id="mini-grid" width="12" height="12" patternUnits="userSpaceOnUse">
+          <path d="M 12 0 L 0 0 0 12" fill="none" stroke="rgba(255,255,255,0.06)" strokeWidth="1" />
+        </pattern>
+      </defs>
+      <rect width={VIEW_W} height={VIEW_H} fill="#07110f" />
+      <rect width={VIEW_W} height={VIEW_H} fill="url(#mini-grid)" />
+
       {state.graph.edges.map(([a, b]) => {
         const pa = layout[a];
         const pb = layout[b];
         if (!pa || !pb) return null;
         return (
-          <line
-            key={`${a}-${b}`}
-            x1={pa.x * VIEW_W}
-            y1={pa.y * VIEW_H}
-            x2={pb.x * VIEW_W}
-            y2={pb.y * VIEW_H}
-            stroke="rgba(255,255,255,0.1)"
-            strokeWidth={1}
-          />
+          <g key={`${a}-${b}`}>
+            <line
+              x1={pa.x * VIEW_W}
+              y1={pa.y * VIEW_H}
+              x2={pb.x * VIEW_W}
+              y2={pb.y * VIEW_H}
+              stroke="#04110f"
+              strokeWidth={6}
+            />
+            <line
+              x1={pa.x * VIEW_W}
+              y1={pa.y * VIEW_H}
+              x2={pb.x * VIEW_W}
+              y2={pb.y * VIEW_H}
+              stroke="rgba(255,255,255,0.14)"
+              strokeWidth={2}
+            />
+          </g>
         );
       })}
+
       {state.graph.nodes.map((id) => {
         const pos = layout[id];
         if (!pos) return null;
+
         const isYou = id === you;
         const isPartner = id === partner;
-        const isHL = highlight.has(id);
+        const isHighlight = highlight.has(id);
         const hasPiece = pieces.has(id);
         const isHover = hover === id;
+
         return (
           <g
             key={id}
@@ -456,53 +500,57 @@ function MiniGraph({
             onClick={() => onTap(id)}
             onMouseEnter={() => onHover?.(id)}
             onMouseLeave={() => onHover?.(null)}
-            style={{ cursor: isHL ? 'pointer' : 'default' }}
+            style={{ cursor: isHighlight ? 'pointer' : 'default' }}
           >
-            <circle
-              r={isHL ? 9 : 5}
+            <rect
+              x={isHighlight ? -10 : -7}
+              y={isHighlight ? -10 : -7}
+              width={isHighlight ? 20 : 14}
+              height={isHighlight ? 20 : 14}
               fill={
                 isYou
                   ? '#ffffff'
                   : isPartner
                     ? '#94a3b8'
-                    : isHL
-                      ? 'rgba(255,255,255,0.4)'
+                    : isHighlight
+                      ? '#ffd36e'
                       : hasPiece
                         ? '#fbbf24'
-                        : 'rgba(255,255,255,0.2)'
+                        : '#d6f5e8'
               }
-              stroke={isHover ? '#fff' : 'rgba(255,255,255,0.3)'}
-              strokeWidth={isHover ? 2 : 1}
+              stroke={isHover ? '#ffffff' : '#04110f'}
+              strokeWidth={isHover ? 3 : 2}
             />
-            {hasPiece && !isYou && !isPartner && (
-              <circle r={3} fill="#fbbf24" />
-            )}
+            <rect x={-3} y={-3} width={6} height={6} fill={isYou ? '#111111' : '#0a1613'} />
           </g>
         );
       })}
-      {/* Cop overlays */}
-      {cops.map((c, idx) => {
-        const pos = layout[c.node as NodeId];
+
+      {cops.map((cop, index) => {
+        const pos = layout[cop.node as NodeId];
         if (!pos) return null;
-        const team = (c.team ?? 'red') as TeamColor;
+        const team = (cop.team ?? 'red') as TeamColor;
         return (
-          <circle
-            key={`c-${c.id}`}
-            cx={pos.x * VIEW_W + ((idx % 3) - 1) * 4}
-            cy={pos.y * VIEW_H + 10}
-            r={3}
+          <rect
+            key={`c-${cop.id}`}
+            x={pos.x * VIEW_W - 4 + ((index % 3) - 1) * 6}
+            y={pos.y * VIEW_H + 10}
+            width={8}
+            height={8}
             fill={TEAM_COLORS[team]}
+            stroke="#04110f"
+            strokeWidth={2}
           />
         );
       })}
-      {/* Thief overlays — visible only when state includes their node (server-filtered) */}
-      {thieves.map((t) => {
-        const pos = layout[t.node as NodeId];
+
+      {thieves.map((thief) => {
+        const pos = layout[thief.node as NodeId];
         if (!pos) return null;
         return (
-          <g key={`t-${t.id}`} transform={`translate(${pos.x * VIEW_W}, ${pos.y * VIEW_H})`}>
-            <circle r={7} fill="white" stroke="black" strokeWidth={1.5} />
-            <text x={0} y={3} fontSize={7} textAnchor="middle" fontWeight="bold">
+          <g key={`t-${thief.id}`} transform={`translate(${pos.x * VIEW_W}, ${pos.y * VIEW_H - 16})`}>
+            <rect x={-8} y={-8} width={16} height={16} fill="#ffffff" stroke="#111111" strokeWidth={2.5} />
+            <text x={0} y={3} fontSize={8} textAnchor="middle" fontWeight="bold" fill="#111111">
               T
             </text>
           </g>
@@ -512,7 +560,6 @@ function MiniGraph({
   );
 }
 
-// BFS within N edges, client-side mirror of graph.ts helper.
 function nodesWithin(
   adjacency: Record<NodeId, NodeId[]>,
   from: NodeId,
@@ -520,18 +567,19 @@ function nodesWithin(
 ): NodeId[] {
   const visited = new Set<NodeId>([from]);
   let frontier: NodeId[] = [from];
+
   for (let i = 0; i < maxSteps; i += 1) {
     const next: NodeId[] = [];
-    for (const cur of frontier) {
-      for (const n of adjacency[cur] ?? []) {
-        if (visited.has(n)) continue;
-        visited.add(n);
-        next.push(n);
+    for (const current of frontier) {
+      for (const node of adjacency[current] ?? []) {
+        if (visited.has(node)) continue;
+        visited.add(node);
+        next.push(node);
       }
     }
     frontier = next;
     if (frontier.length === 0) break;
   }
+
   return Array.from(visited);
 }
-
