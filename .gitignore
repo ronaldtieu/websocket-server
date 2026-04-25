@@ -28,4 +28,6 @@ coverage/
 # Personal Notes:
 notes.md
 
+# Setup / design docs kept local, not pushed
+setup/
 

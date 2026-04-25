@@ -1,4 +1,4 @@
-// phone-friendly rules card for Balance Mancala.
+// phone-friendly rules card for Balance Mancala. short and onboarding-focused.
 
 export function BalanceMancalaInstructions() {
   return (
