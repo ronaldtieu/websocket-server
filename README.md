@@ -92,6 +92,33 @@ to test from other devices on your network, use your computer's ip address:
 http://192.168.x.x:3131
 ```
 
+### running with docker
+
+if you'd rather not install node locally, the project ships with a `Dockerfile` so it runs the same on any machine.
+
+```bash
+# 1. start docker desktop (skip if it's already running)
+open -a Docker
+
+# 2. wait until the daemon is ready
+docker info >/dev/null 2>&1 && echo "ready" || echo "still starting"
+
+# 3. build the image
+docker build -t websocket-server .
+
+# 4. run the container (ctrl+c stops it; --rm cleans up after exit)
+docker run --rm -p 3131:3131 --name websocket-server websocket-server
+```
+
+then open `http://localhost:3131` like normal.
+
+a few useful variants:
+- run detached: add `-d` to step 4, then `docker logs -f websocket-server` to tail and `docker stop websocket-server` to kill
+- map a different host port: `-p 8080:3131` exposes it on `http://localhost:8080`
+- rebuild after code changes: re-run step 3 (add `--no-cache` to force a clean build), then step 4
+
+the image uses a multi-stage build — first stage runs `vite build`, second stage is a slim runtime that serves the built client and runs the socket.io server on port 3131.
+
 ## Integrating Your Game
 
 to connect your game library to this server, implement the `gameinterface` in your game project:
